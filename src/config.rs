@@ -55,20 +55,5 @@ impl Config {
 }
 
 fn config_path() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    let base = std::env::var_os("APPDATA").map(PathBuf::from);
-
-    #[cfg(target_os = "macos")]
-    let base = std::env::var_os("HOME")
-        .map(|home| PathBuf::from(home).join("Library/Application Support"));
-
-    #[cfg(all(unix, not(target_os = "macos")))]
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")));
-
-    #[cfg(not(any(target_os = "windows", target_os = "macos", unix)))]
-    let base: Option<PathBuf> = None;
-
-    base.map(|base| base.join("mangania").join("config.toml"))
+    dirs::config_dir().map(|base| base.join("mangania").join("config.toml"))
 }
