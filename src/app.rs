@@ -93,6 +93,7 @@ impl App {
                     depth: self.depth,
                 });
                 self.error = None;
+                self.scroll = 0.0;
 
                 if let Some(viewer) = self.viewer.as_mut() {
                     viewer.request_current(self.spread);
@@ -133,13 +134,16 @@ impl App {
         }
 
         viewer.current = page;
+        viewer.prefetch.clear_pending();
         viewer.request_current(spread);
         viewer.prefetch_around();
+        self.error = None;
         self.update_title();
         self.request_redraw();
     }
 
     fn set_spread(&mut self, spread: bool) {
+        self.scroll = 0.0;
         self.spread = spread;
         #[cfg(any(target_os = "windows", target_os = "macos"))]
         if let Some(menu) = &self.menu {
@@ -151,6 +155,7 @@ impl App {
             if spread {
                 viewer.current -= viewer.current % 2;
             }
+            viewer.prefetch.clear_pending();
             viewer.request_current(spread);
             viewer.prefetch_around();
         }
@@ -159,6 +164,9 @@ impl App {
     }
 
     fn handle_scroll(&mut self, delta: MouseScrollDelta) {
+        if self.viewer.is_none() {
+            return;
+        }
         self.scroll += match delta {
             MouseScrollDelta::LineDelta(_, y) => y * 50.0,
             MouseScrollDelta::PixelDelta(position) => position.y as f32,
@@ -202,11 +210,6 @@ impl App {
     }
 
     fn set_fullscreen(&mut self, fullscreen: bool) {
-        #[cfg(any(target_os = "windows", target_os = "macos"))]
-        if let Some(menu) = &self.menu {
-            menu.fullscreen.set_checked(fullscreen);
-        }
-
         if let Some(window) = &self.window {
             window.set_fullscreen(if fullscreen {
                 Some(Fullscreen::Borderless(None))
@@ -346,7 +349,6 @@ impl App {
         let single = event.id == menu.single.id();
         let spread = event.id == menu.spread.id();
         let fullscreen = event.id == menu.fullscreen.id();
-        let fullscreen_checked = menu.fullscreen.is_checked();
 
         if next {
             self.navigate(1);
@@ -361,7 +363,8 @@ impl App {
         } else if spread {
             self.set_spread(true);
         } else if fullscreen {
-            self.set_fullscreen(fullscreen_checked);
+            let next = !self.is_fullscreen();
+            self.set_fullscreen(next);
         }
     }
 }
@@ -373,29 +376,25 @@ impl ApplicationHandler<UserEvent> for App {
             return;
         }
 
-        let attributes = Window::default_attributes()
-            .with_title("MangaNia")
-            .with_inner_size(LogicalSize::new(1200.0, 900.0));
-        let window = match event_loop.create_window(attributes) {
-            Ok(window) => Arc::new(window),
-            Err(error) => {
-                eprintln!("mangania: create window: {error}");
-                event_loop.exit();
-                return;
-            }
+        let setup = || -> Result<_, String> {
+            let window = event_loop
+                .create_window(
+                    Window::default_attributes()
+                        .with_title("MangaNia")
+                        .with_inner_size(LogicalSize::new(1200.0, 900.0)),
+                )
+                .map_err(|error| format!("create window: {error}"))?;
+            let window = Arc::new(window);
+            let context = softbuffer::Context::new(window.clone())
+                .map_err(|error| format!("create display context: {error}"))?;
+            let surface = softbuffer::Surface::new(&context, window.clone())
+                .map_err(|error| format!("create surface: {error}"))?;
+            Ok((window, surface))
         };
-        let context = match softbuffer::Context::new(window.clone()) {
-            Ok(context) => context,
+        let (window, surface) = match setup() {
+            Ok(setup) => setup,
             Err(error) => {
-                eprintln!("mangania: create display context: {error}");
-                event_loop.exit();
-                return;
-            }
-        };
-        let surface = match softbuffer::Surface::new(&context, window.clone()) {
-            Ok(surface) => surface,
-            Err(error) => {
-                eprintln!("mangania: create surface: {error}");
+                eprintln!("mangania: {error}");
                 event_loop.exit();
                 return;
             }
@@ -436,10 +435,6 @@ impl ApplicationHandler<UserEvent> for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
-                #[cfg(any(target_os = "windows", target_os = "macos"))]
-                if let (Some(menu), Some(window)) = (&self.menu, &self.window) {
-                    menu.fullscreen.set_checked(window.fullscreen().is_some());
-                }
                 self.request_redraw();
             }
             WindowEvent::DroppedFile(path) => {
