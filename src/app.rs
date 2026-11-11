@@ -36,6 +36,7 @@ struct App {
     surface: Option<softbuffer::Surface<Arc<Window>, Arc<Window>>>,
     spread: bool,
     scroll: f32,
+    last_frame: Vec<u32>,
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     menu: Option<MenuBar>,
     error: Option<String>,
@@ -52,6 +53,7 @@ impl App {
             surface: None,
             spread: false,
             scroll: 0.0,
+            last_frame: Vec::new(),
             #[cfg(any(target_os = "windows", target_os = "macos"))]
             menu: None,
             error: None,
@@ -79,6 +81,7 @@ impl App {
                 self.viewer = Some(Viewer::new(name, pages, prefetch, self.depth));
                 self.error = None;
                 self.scroll = 0.0;
+                self.last_frame.clear();
                 self.refresh();
             }
             Err(error) => {
@@ -267,6 +270,7 @@ impl App {
             None => (None, None),
         };
 
+        let has_image = current.is_some();
         match current {
             Some(current) if self.spread => view::render_spread(
                 &mut buffer,
@@ -281,7 +285,18 @@ impl App {
                 size.height as usize,
                 current.as_ref(),
             ),
-            None => view::blank(&mut buffer),
+            None => {
+                if self.last_frame.len() == buffer.len() {
+                    buffer.copy_from_slice(&self.last_frame);
+                } else {
+                    view::blank(&mut buffer);
+                }
+            }
+        }
+
+        if has_image {
+            self.last_frame.resize(buffer.len(), 0);
+            self.last_frame.copy_from_slice(&buffer);
         }
         let _ = buffer.present();
     }
