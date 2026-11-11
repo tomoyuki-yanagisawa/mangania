@@ -1,10 +1,14 @@
-use muda::{CheckMenuItem, Menu, PredefinedMenuItem, Submenu};
+use muda::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
 
 use crate::prefetch::UserEvent;
 
 pub struct MenuBar {
+    pub next: MenuItem,
+    pub prev: MenuItem,
+    pub first: MenuItem,
+    pub last: MenuItem,
     pub single: CheckMenuItem,
     pub spread: CheckMenuItem,
     pub fullscreen: CheckMenuItem,
@@ -18,6 +22,17 @@ impl MenuBar {
         let app = Submenu::new("MangaNia", true);
         let _ = app.append(&PredefinedMenuItem::quit(None));
         let _ = menu.append(&app);
+
+        let navigation = Submenu::new("移動", true);
+        let next = MenuItem::new("次のページ", true, None);
+        let prev = MenuItem::new("前のページ", true, None);
+        let first = MenuItem::new("先頭へ", true, None);
+        let last = MenuItem::new("末尾へ", true, None);
+        let _ = navigation.append(&next);
+        let _ = navigation.append(&prev);
+        let _ = navigation.append(&first);
+        let _ = navigation.append(&last);
+        let _ = menu.append(&navigation);
 
         let view = Submenu::new("表示", true);
         let single = CheckMenuItem::new("1ページ表示", true, !spread, None);
@@ -34,6 +49,10 @@ impl MenuBar {
         }));
 
         Self {
+            next,
+            prev,
+            first,
+            last,
             single,
             spread: spread_item,
             fullscreen,
