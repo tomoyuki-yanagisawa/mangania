@@ -1,7 +1,7 @@
 use std::collections::{HashSet, VecDeque};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Condvar, Mutex};
-use std::thread::{self, JoinHandle};
+use std::thread;
 
 use image::RgbaImage;
 use winit::event_loop::EventLoopProxy;
@@ -29,7 +29,6 @@ pub struct Prefetch {
     queue: Arc<(Mutex<Queue>, Condvar)>,
     results: Receiver<(usize, Result<Arc<RgbaImage>, String>)>,
     in_flight: HashSet<usize>,
-    worker: Option<JoinHandle<()>>,
 }
 
 impl Prefetch {
@@ -42,9 +41,9 @@ impl Prefetch {
             }),
             Condvar::new(),
         ));
-        let (sender, results) = mpsc::channel();
+        let (sender, results) = mpsc::sync_channel(1);
         let worker_queue = Arc::clone(&queue);
-        let worker = thread::spawn(move || {
+        thread::spawn(move || {
             let mut archive = archive;
             loop {
                 let job = {
@@ -78,7 +77,6 @@ impl Prefetch {
             queue,
             results,
             in_flight: HashSet::new(),
-            worker: Some(worker),
         }
     }
 
@@ -131,13 +129,8 @@ impl Prefetch {
 
 impl Drop for Prefetch {
     fn drop(&mut self) {
-        {
-            let (lock, ready) = &*self.queue;
-            lock.lock().unwrap().closed = true;
-            ready.notify_all();
-        }
-        if let Some(worker) = self.worker.take() {
-            let _ = worker.join();
-        }
+        let (lock, ready) = &*self.queue;
+        lock.lock().unwrap().closed = true;
+        ready.notify_all();
     }
 }
