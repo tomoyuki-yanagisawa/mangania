@@ -7,7 +7,7 @@ use std::sync::Arc;
 use image::RgbaImage;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{ElementState, WindowEvent};
+use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, NamedKey};
 use winit::window::{Fullscreen, Window, WindowId};
@@ -34,6 +34,7 @@ struct App {
     window: Option<Arc<Window>>,
     surface: Option<softbuffer::Surface<Arc<Window>, Arc<Window>>>,
     spread: bool,
+    scroll: f32,
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     menu: Option<MenuBar>,
     error: Option<String>,
@@ -60,6 +61,7 @@ impl App {
             window: None,
             surface: None,
             spread: false,
+            scroll: 0.0,
             #[cfg(any(target_os = "windows", target_os = "macos"))]
             menu: None,
             error: None,
@@ -107,23 +109,31 @@ impl App {
 
     fn navigate(&mut self, delta: isize) {
         let step = if self.spread { 2 } else { 1 };
+        let Some(viewer) = &self.viewer else {
+            return;
+        };
+        let target = if delta > 0 {
+            viewer.current + step
+        } else {
+            viewer.current.saturating_sub(step)
+        };
+        self.go_to(target);
+    }
+
+    fn go_to(&mut self, page: usize) {
+        let spread = self.spread;
+        self.scroll = 0.0;
         let Some(viewer) = self.viewer.as_mut() else {
             return;
         };
-        let previous = viewer.current;
-        if delta > 0 {
-            let target = viewer.current + step;
-            if target < viewer.pages.len() {
-                viewer.current = target;
-            }
-        } else {
-            viewer.current = viewer.current.saturating_sub(step);
-        }
-        if viewer.current == previous {
+        let page = page.min(viewer.pages.len().saturating_sub(1));
+        let page = if spread { page - page % 2 } else { page };
+        if viewer.current == page {
             return;
         }
 
-        viewer.request_current(self.spread);
+        viewer.current = page;
+        viewer.request_current(spread);
         viewer.prefetch_around();
         self.update_title();
         self.request_redraw();
@@ -148,10 +158,24 @@ impl App {
         self.request_redraw();
     }
 
+    fn handle_scroll(&mut self, delta: MouseScrollDelta) {
+        self.scroll += match delta {
+            MouseScrollDelta::LineDelta(_, y) => y * 50.0,
+            MouseScrollDelta::PixelDelta(position) => position.y as f32,
+        };
+        if self.scroll <= -50.0 {
+            self.navigate(1);
+        } else if self.scroll >= 50.0 {
+            self.navigate(-1);
+        }
+    }
+
     fn handle_key(&mut self, key: Key, event_loop: &ActiveEventLoop) {
         match key {
             Key::Named(NamedKey::ArrowRight) => self.navigate(1),
             Key::Named(NamedKey::ArrowLeft) => self.navigate(-1),
+            Key::Named(NamedKey::Home) => self.go_to(0),
+            Key::Named(NamedKey::End) => self.go_to(usize::MAX),
             Key::Named(NamedKey::F11) => {
                 let fullscreen = self.is_fullscreen();
                 self.set_fullscreen(!fullscreen);
@@ -312,16 +336,27 @@ impl App {
 
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     fn handle_menu(&mut self, event: muda::MenuEvent) {
-        let (single, spread, fullscreen, fullscreen_checked) = match &self.menu {
-            Some(menu) => (
-                event.id == menu.single.id(),
-                event.id == menu.spread.id(),
-                event.id == menu.fullscreen.id(),
-                menu.fullscreen.is_checked(),
-            ),
-            None => return,
+        let Some(menu) = &self.menu else {
+            return;
         };
-        if single {
+        let next = event.id == menu.next.id();
+        let prev = event.id == menu.prev.id();
+        let first = event.id == menu.first.id();
+        let last = event.id == menu.last.id();
+        let single = event.id == menu.single.id();
+        let spread = event.id == menu.spread.id();
+        let fullscreen = event.id == menu.fullscreen.id();
+        let fullscreen_checked = menu.fullscreen.is_checked();
+
+        if next {
+            self.navigate(1);
+        } else if prev {
+            self.navigate(-1);
+        } else if first {
+            self.go_to(0);
+        } else if last {
+            self.go_to(usize::MAX);
+        } else if single {
             self.set_spread(false);
         } else if spread {
             self.set_spread(true);
@@ -414,6 +449,16 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 self.handle_key(event.logical_key, event_loop);
             }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button,
+                ..
+            } => match button {
+                MouseButton::Left => self.navigate(1),
+                MouseButton::Right => self.navigate(-1),
+                _ => {}
+            },
+            WindowEvent::MouseWheel { delta, .. } => self.handle_scroll(delta),
             WindowEvent::RedrawRequested => self.draw(),
             _ => {}
         }
