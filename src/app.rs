@@ -7,7 +7,7 @@ use std::sync::Arc;
 use image::RgbaImage;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{ElementState, WindowEvent};
+use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, NamedKey};
 use winit::window::{Fullscreen, Window, WindowId};
@@ -34,6 +34,7 @@ struct App {
     window: Option<Arc<Window>>,
     surface: Option<softbuffer::Surface<Arc<Window>, Arc<Window>>>,
     spread: bool,
+    scroll: f32,
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     menu: Option<MenuBar>,
     error: Option<String>,
@@ -60,6 +61,7 @@ impl App {
             window: None,
             surface: None,
             spread: false,
+            scroll: 0.0,
             #[cfg(any(target_os = "windows", target_os = "macos"))]
             menu: None,
             error: None,
@@ -106,6 +108,7 @@ impl App {
     }
 
     fn navigate(&mut self, delta: isize) {
+        self.scroll = 0.0;
         let step = if self.spread { 2 } else { 1 };
         let Some(viewer) = self.viewer.as_mut() else {
             return;
@@ -146,6 +149,18 @@ impl App {
         }
         self.update_title();
         self.request_redraw();
+    }
+
+    fn handle_scroll(&mut self, delta: MouseScrollDelta) {
+        self.scroll += match delta {
+            MouseScrollDelta::LineDelta(_, y) => y * 50.0,
+            MouseScrollDelta::PixelDelta(position) => position.y as f32,
+        };
+        if self.scroll <= -50.0 {
+            self.navigate(1);
+        } else if self.scroll >= 50.0 {
+            self.navigate(-1);
+        }
     }
 
     fn handle_key(&mut self, key: Key, event_loop: &ActiveEventLoop) {
@@ -414,6 +429,16 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 self.handle_key(event.logical_key, event_loop);
             }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button,
+                ..
+            } => match button {
+                MouseButton::Left => self.navigate(1),
+                MouseButton::Right => self.navigate(-1),
+                _ => {}
+            },
+            WindowEvent::MouseWheel { delta, .. } => self.handle_scroll(delta),
             WindowEvent::RedrawRequested => self.draw(),
             _ => {}
         }
