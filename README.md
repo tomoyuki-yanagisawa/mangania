@@ -14,6 +14,19 @@ cargo run --release -- --prefetch 4 path/to/book.zip
 
 引数なしで起動した場合は空のウィンドウが開きます。ZIP をウィンドウへドラッグ＆ドロップすると読み込みます。
 
+GUIを開かずに確認することもできます。
+
+```sh
+# ページ一覧（自然順）を表示
+cargo run --release -- --list path/to/book.zip
+
+# 全ページをデコードしてエラーを確認（失敗時は終了コード1）
+cargo run --release -- --check path/to/book.zip
+
+# 指定ページを画像として出力（1始まり）
+cargo run --release -- --render-page 1 out.png path/to/book.zip
+```
+
 | 操作 | キー・マウス |
 | --- | --- |
 | 次のページ | Right / 左クリック / ホイール下 |
@@ -90,13 +103,24 @@ cargo +nightly build -Z build-std --target x86_64-win7-windows-msvc --release
 
 ```text
 src/
-├── main.rs      # 引数処理・起動
+├── lib.rs       # ライブラリ入口（コアAPI）
+├── main.rs      # CLI
 ├── app.rs       # winit イベントループ、D&D、ページ状態
+├── cli.rs       # 引数解析
+├── headless.rs  # GUIなしの list / check / render-page
 ├── archive.rs   # ZIP 索引・自然順・読み出し
 ├── decoder.rs   # JPEG / PNG / WebP デコード
 ├── prefetch.rs  # ワーカースレッドと優先度付きジョブ
 ├── menu.rs      # Windows / macOS のネイティブメニュー
 └── view.rs      # フィット・見開き配置・0RGB 描画
+
+tests/
+├── common/mod.rs
+├── archive.rs
+├── cli.rs
+├── decoder.rs
+├── headless.rs
+└── view.rs
 ```
 
 ## テスト
@@ -106,7 +130,7 @@ cargo test
 cargo clippy --all-targets
 ```
 
-自然順ソートのみ自動テストしています。
+自然順ソート、パス除外、PNG/JPEGデコード、1ページ/見開き描画、CLI引数、ヘッドレス `--check` / `--render-page` をテストしています。GUI操作は手動確認です。
 
 ## 設計書との主な差分
 
