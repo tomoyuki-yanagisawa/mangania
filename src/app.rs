@@ -258,43 +258,46 @@ impl App {
             return;
         };
 
-        let (current, next) = match self.viewer.as_ref() {
-            Some(viewer) => (
-                viewer.cache.get(viewer.current),
-                if self.spread {
+        let (current, next, waiting_for_next) = match self.viewer.as_ref() {
+            Some(viewer) => {
+                let next = if self.spread {
                     viewer.cache.get(viewer.current + 1)
                 } else {
                     None
-                },
-            ),
-            None => (None, None),
+                };
+                let waiting = self.spread
+                    && viewer.current + 1 < viewer.pages.len()
+                    && next.is_none()
+                    && !viewer.errors.contains_key(&(viewer.current + 1));
+                (viewer.cache.get(viewer.current), next, waiting)
+            }
+            None => (None, None, false),
         };
 
-        let has_image = current.is_some();
-        match current {
-            Some(current) if self.spread => view::render_spread(
-                &mut buffer,
-                size.width as usize,
-                size.height as usize,
-                next.as_deref(),
-                Some(current.as_ref()),
-            ),
-            Some(current) => view::render(
-                &mut buffer,
-                size.width as usize,
-                size.height as usize,
-                current.as_ref(),
-            ),
-            None => {
-                if self.last_frame.len() == buffer.len() {
-                    buffer.copy_from_slice(&self.last_frame);
-                } else {
-                    view::blank(&mut buffer);
-                }
+        if current.is_none() || waiting_for_next {
+            if self.last_frame.len() == buffer.len() {
+                buffer.copy_from_slice(&self.last_frame);
+            } else {
+                view::blank(&mut buffer);
             }
-        }
+        } else if let Some(current) = current {
+            if self.spread {
+                view::render_spread(
+                    &mut buffer,
+                    size.width as usize,
+                    size.height as usize,
+                    next.as_deref(),
+                    Some(current.as_ref()),
+                );
+            } else {
+                view::render(
+                    &mut buffer,
+                    size.width as usize,
+                    size.height as usize,
+                    current.as_ref(),
+                );
+            }
 
-        if has_image {
             self.last_frame.resize(buffer.len(), 0);
             self.last_frame.copy_from_slice(&buffer);
         }
