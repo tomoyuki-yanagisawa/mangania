@@ -11,6 +11,7 @@ use winit::keyboard::{Key, NamedKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
 use crate::archive::Archive;
+use crate::config::Config;
 use crate::event::UserEvent;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::menu::MenuBar;
@@ -37,6 +38,7 @@ struct App {
     spread: bool,
     scroll: f32,
     last_frame: Vec<u32>,
+    config: Config,
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     menu: Option<MenuBar>,
     error: Option<String>,
@@ -44,6 +46,7 @@ struct App {
 
 impl App {
     fn new(initial_path: Option<PathBuf>, depth: usize, proxy: EventLoopProxy<UserEvent>) -> Self {
+        let config = Config::load();
         Self {
             initial_path,
             depth,
@@ -51,9 +54,10 @@ impl App {
             viewer: None,
             window: None,
             surface: None,
-            spread: false,
+            spread: config.spread,
             scroll: 0.0,
             last_frame: Vec::new(),
+            config,
             #[cfg(any(target_os = "windows", target_os = "macos"))]
             menu: None,
             error: None,
@@ -119,6 +123,8 @@ impl App {
     fn set_spread(&mut self, spread: bool) {
         self.scroll = 0.0;
         self.spread = spread;
+        self.config.spread = spread;
+        self.config.save();
         #[cfg(any(target_os = "windows", target_os = "macos"))]
         if let Some(menu) = &self.menu {
             menu.single.set_checked(!spread);
