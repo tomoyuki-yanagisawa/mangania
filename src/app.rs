@@ -18,6 +18,8 @@ use crate::menu::MenuBar;
 use crate::prefetch::{Prefetch, UserEvent};
 use crate::view;
 
+const MAX_CACHE_BYTES: usize = 128 * 1024 * 1024;
+
 pub fn run(path: Option<PathBuf>, prefetch_depth: usize) -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
     event_loop.set_control_flow(ControlFlow::Wait);
@@ -47,6 +49,7 @@ struct Viewer {
     prefetch: Prefetch,
     cache: HashMap<usize, Arc<RgbaImage>>,
     order: VecDeque<usize>,
+    used: usize,
     errors: HashMap<usize, String>,
     depth: usize,
 }
@@ -89,6 +92,7 @@ impl App {
                     prefetch: Prefetch::start(archive, self.proxy.clone()),
                     cache: HashMap::new(),
                     order: VecDeque::new(),
+                    used: 0,
                     errors: HashMap::new(),
                     depth: self.depth,
                 });
@@ -489,12 +493,17 @@ impl Viewer {
     }
 
     fn insert(&mut self, page: usize, image: Arc<RgbaImage>) {
+        let bytes = image.as_raw().len();
+        if bytes > MAX_CACHE_BYTES && page != self.current {
+            return;
+        }
         if self.cache.insert(page, image).is_none() {
             self.order.push_back(page);
+            self.used += bytes;
         }
 
         let limit = self.depth + 2;
-        while self.order.len() > limit {
+        while (self.order.len() > limit || self.used > MAX_CACHE_BYTES) && self.cache.len() > 1 {
             let Some(oldest) = self.order.pop_front() else {
                 break;
             };
@@ -502,7 +511,9 @@ impl Viewer {
                 self.order.push_back(oldest);
                 continue;
             }
-            self.cache.remove(&oldest);
+            if let Some(image) = self.cache.remove(&oldest) {
+                self.used -= image.as_raw().len();
+            }
         }
     }
 }
