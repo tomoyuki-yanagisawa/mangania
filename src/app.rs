@@ -1,10 +1,8 @@
-use std::collections::{HashMap, VecDeque};
 use std::error::Error;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use image::RgbaImage;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
@@ -13,12 +11,13 @@ use winit::keyboard::{Key, NamedKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
 use crate::archive::Archive;
+use crate::event::UserEvent;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::menu::MenuBar;
-use crate::prefetch::{Prefetch, UserEvent};
+use crate::navigation;
+use crate::prefetch::Prefetch;
 use crate::view;
-
-const MAX_CACHE_BYTES: usize = 128 * 1024 * 1024;
+use crate::viewer::Viewer;
 
 pub fn run(path: Option<PathBuf>, prefetch_depth: usize) -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
@@ -40,18 +39,6 @@ struct App {
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     menu: Option<MenuBar>,
     error: Option<String>,
-}
-
-struct Viewer {
-    name: String,
-    pages: Vec<usize>,
-    current: usize,
-    prefetch: Prefetch,
-    cache: HashMap<usize, Arc<RgbaImage>>,
-    order: VecDeque<usize>,
-    used: usize,
-    errors: HashMap<usize, String>,
-    depth: usize,
 }
 
 impl App {
@@ -85,17 +72,11 @@ impl App {
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| path.display().to_string());
-                self.viewer = Some(Viewer {
-                    name,
-                    pages,
-                    current: 0,
-                    prefetch: Prefetch::start(archive, self.proxy.clone()),
-                    cache: HashMap::new(),
-                    order: VecDeque::new(),
-                    used: 0,
-                    errors: HashMap::new(),
-                    depth: self.depth,
+                let proxy = self.proxy.clone();
+                let prefetch = Prefetch::start(archive, move || {
+                    proxy.send_event(UserEvent::ImageReady).is_ok()
                 });
+                self.viewer = Some(Viewer::new(name, pages, prefetch, self.depth));
                 self.error = None;
                 self.scroll = 0.0;
                 self.refresh();
@@ -109,16 +90,14 @@ impl App {
     }
 
     fn navigate(&mut self, delta: isize) {
-        let step = if self.spread { 2 } else { 1 };
         let Some(viewer) = &self.viewer else {
             return;
         };
-        let target = if delta > 0 {
-            viewer.current + step
-        } else {
-            viewer.current.saturating_sub(step)
+        let Some(page) = navigation::step(viewer.current, viewer.pages.len(), self.spread, delta)
+        else {
+            return;
         };
-        self.go_to(target);
+        self.go_to(page);
     }
 
     fn go_to(&mut self, page: usize) {
@@ -127,14 +106,9 @@ impl App {
         let Some(viewer) = self.viewer.as_mut() else {
             return;
         };
-        let page = page.min(viewer.pages.len().saturating_sub(1));
-        let page = if spread { page - page % 2 } else { page };
-        if viewer.current == page {
+        if !viewer.go_to(page, spread) {
             return;
         }
-
-        viewer.current = page;
-        viewer.prefetch.clear_pending();
         self.error = None;
         self.refresh();
     }
@@ -150,7 +124,7 @@ impl App {
 
         if let Some(viewer) = self.viewer.as_mut() {
             if spread {
-                viewer.current -= viewer.current % 2;
+                viewer.align_spread();
             }
             viewer.prefetch.clear_pending();
         }
@@ -226,11 +200,11 @@ impl App {
             } else {
                 format!("{start}/{}", viewer.pages.len())
             };
-            let mut title = format!("MangaNia - {} - {pages}", viewer.name);
+            let mut title = format!("MangaNia - {} - {pages}", viewer.file_name);
             if let Some(message) = viewer.errors.get(&viewer.current) {
                 title.push_str(" - error: ");
                 title.extend(message.chars().take(120));
-            } else if !viewer.cache.contains_key(&viewer.current) {
+            } else if !viewer.cache.contains(viewer.current) {
                 title.push_str(" - loading...");
             }
             if let Some(error) = &self.error {
@@ -283,9 +257,9 @@ impl App {
 
         let (current, next) = match self.viewer.as_ref() {
             Some(viewer) => (
-                viewer.cache.get(&viewer.current).cloned(),
+                viewer.cache.get(viewer.current),
                 if self.spread {
-                    viewer.cache.get(&(viewer.current + 1)).cloned()
+                    viewer.cache.get(viewer.current + 1)
                 } else {
                     None
                 },
@@ -457,65 +431,6 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::MouseWheel { delta, .. } => self.handle_scroll(delta),
             WindowEvent::RedrawRequested => self.draw(),
             _ => {}
-        }
-    }
-}
-
-impl Viewer {
-    fn request_current(&mut self, spread: bool) {
-        let current = self.current;
-        self.request(current, true);
-        if spread && current + 1 < self.pages.len() {
-            self.request(current + 1, false);
-        }
-    }
-
-    fn prefetch_around(&mut self) {
-        let current = self.current;
-        for offset in 1..=self.depth {
-            let Some(page) = current.checked_add(offset) else {
-                break;
-            };
-            if page >= self.pages.len() {
-                break;
-            }
-            self.request(page, false);
-        }
-    }
-
-    fn request(&mut self, page: usize, urgent: bool) {
-        if page >= self.pages.len()
-            || self.cache.contains_key(&page)
-            || self.errors.contains_key(&page)
-        {
-            return;
-        }
-        let entry = self.pages[page];
-        self.prefetch.request(page, entry, urgent);
-    }
-
-    fn insert(&mut self, page: usize, image: Arc<RgbaImage>) {
-        let bytes = image.as_raw().len();
-        if bytes > MAX_CACHE_BYTES && page != self.current {
-            return;
-        }
-        if self.cache.insert(page, image).is_none() {
-            self.order.push_back(page);
-            self.used += bytes;
-        }
-
-        let limit = self.depth + 2;
-        while (self.order.len() > limit || self.used > MAX_CACHE_BYTES) && self.cache.len() > 1 {
-            let Some(oldest) = self.order.pop_front() else {
-                break;
-            };
-            if oldest == self.current {
-                self.order.push_back(oldest);
-                continue;
-            }
-            if let Some(image) = self.cache.remove(&oldest) {
-                self.used -= image.as_raw().len();
-            }
         }
     }
 }

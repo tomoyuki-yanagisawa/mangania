@@ -2,7 +2,7 @@ use muda::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
 
-use crate::prefetch::UserEvent;
+use crate::event::UserEvent;
 
 pub struct MenuBar {
     pub next: MenuItem,

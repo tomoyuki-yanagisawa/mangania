@@ -4,16 +4,9 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 
 use image::RgbaImage;
-use winit::event_loop::EventLoopProxy;
 
 use crate::archive::Archive;
 use crate::decoder;
-
-pub enum UserEvent {
-    ImageReady,
-    #[cfg(any(target_os = "windows", target_os = "macos"))]
-    Menu(muda::MenuEvent),
-}
 
 struct Job {
     page: usize,
@@ -33,7 +26,7 @@ pub struct Prefetch {
 
 impl Prefetch {
     /// Takes ownership of the archive so ZIP reads and decodes never block the UI thread.
-    pub fn start(archive: Archive, proxy: EventLoopProxy<UserEvent>) -> Self {
+    pub fn start(archive: Archive, notify: impl Fn() -> bool + Send + 'static) -> Self {
         let queue = Arc::new((
             Mutex::new(Queue {
                 jobs: VecDeque::new(),
@@ -67,7 +60,7 @@ impl Prefetch {
                 if sender.send((job.page, result)).is_err() {
                     return;
                 }
-                if proxy.send_event(UserEvent::ImageReady).is_err() {
+                if !notify() {
                     return;
                 }
             }

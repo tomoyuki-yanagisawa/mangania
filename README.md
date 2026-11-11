@@ -105,21 +105,28 @@ cargo +nightly build -Z build-std --target x86_64-win7-windows-msvc --release
 src/
 ├── lib.rs       # ライブラリ入口（コアAPI）
 ├── main.rs      # CLI
-├── app.rs       # winit イベントループ、D&D、ページ状態
+├── app.rs       # winit イベントループ、D&D、UI
+├── viewer.rs    # Viewer: ページ、現在位置、キャッシュ、Prefetch要求
+├── cache.rs     # ページ数・バイト予算付きキャッシュ
+├── navigation.rs # ページ移動の純粋関数
+├── event.rs     # winit/menu のユーザーイベント
 ├── cli.rs       # 引数解析
 ├── headless.rs  # GUIなしの list / check / render-page
 ├── archive.rs   # ZIP 索引・自然順・読み出し
 ├── decoder.rs   # JPEG / PNG / WebP デコード
-├── prefetch.rs  # ワーカースレッドと優先度付きジョブ
+├── prefetch.rs  # ワーカースレッドと優先度付きジョブ（winit非依存）
 ├── menu.rs      # Windows / macOS のネイティブメニュー
 └── view.rs      # フィット・見開き配置・0RGB 描画
 
 tests/
 ├── common/mod.rs
 ├── archive.rs
+├── cache.rs
 ├── cli.rs
 ├── decoder.rs
 ├── headless.rs
+├── navigation.rs
+├── prefetch.rs
 └── view.rs
 ```
 
@@ -130,7 +137,7 @@ cargo test
 cargo clippy --all-targets
 ```
 
-自然順ソート、パス除外、PNG/JPEGデコード、1ページ/見開き描画、CLI引数、ヘッドレス `--check` / `--render-page` をテストしています。GUI操作は手動確認です。
+自然順ソート、パス除外、PNG/JPEGデコード、1ページ/見開き描画、CLI引数、ヘッドレス `--check` / `--render-page`、キャッシュの枚数/バイト上限、ナビゲーション境界、winit非依存のPrefetchをテストしています。GUI操作は手動確認です。
 
 ## 設計書との主な差分
 
