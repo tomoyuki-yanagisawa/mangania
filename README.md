@@ -47,12 +47,27 @@ cargo run --release -- --render-page 1 out.png path/to/book.zip
 
 - 既定は **1ページ表示** です。
 - メニューの「表示」から **1ページ表示 / 見開き表示** を切り替えられます。
+- 選んだ表示モードは設定ファイルに保存され、次回起動時に復元されます。
 - 見開きは漫画向けに、現在ページを右、次ページを左に並べます（右→左）。
 - 見開き時はページ送りが2ページ単位になり、末尾で1ページだけになる場合は中央に表示します。
 - 見開きの組は先頭から `(1,2)`, `(3,4)`, ... です。表紙を単独表示する設定は未実装です。
 - ネイティブメニューは Windows / macOS のみです。Linux では `V` キーで切り替えます。
 
 ウィンドウサイズに合わせて画像をフィットして中央に表示します。
+
+## 設定ファイル
+
+表示モードはTOMLで保存されます。
+
+- macOS: `~/Library/Application Support/mangania/config.toml`
+- Windows: `%APPDATA%\mangania\config.toml`
+- Linux: `$XDG_CONFIG_HOME/mangania/config.toml`（未設定時は `~/.config/mangania/config.toml`）
+
+```toml
+spread = true
+```
+
+`spread = true` が見開き表示、`false` が1ページ表示です。
 
 ## 全画面
 
@@ -112,6 +127,7 @@ src/
 ├── navigation.rs # ページ移動の純粋関数
 ├── event.rs     # winit/menu のユーザーイベント
 ├── cli.rs       # 引数解析
+├── config.rs    # TOML設定（見開きの永続化）
 ├── headless.rs  # GUIなしの list / check / render-page
 ├── archive.rs   # ZIP 索引・自然順・読み出し
 ├── decoder.rs   # JPEG / PNG / WebP デコード
@@ -125,6 +141,7 @@ tests/
 ├── cache.rs
 ├── cli.rs
 ├── decoder.rs
+├── config.rs
 ├── headless.rs
 ├── navigation.rs
 ├── prefetch.rs
@@ -138,7 +155,7 @@ cargo test
 cargo clippy --all-targets
 ```
 
-自然順ソート、パス除外、PNG/JPEGデコード、1ページ/見開き描画、CLI引数、ヘッドレス `--check` / `--render-page`、キャッシュの枚数/バイト上限、ナビゲーション境界、winit非依存のPrefetchをテストしています。GUI操作は手動確認です。
+自然順ソート、パス除外、PNG/JPEGデコード、1ページ/見開き描画、CLI引数、ヘッドレス `--check` / `--render-page`、キャッシュの枚数/バイト上限、ナビゲーション境界、winit非依存のPrefetch、設定のTOML読み書きをテストしています。GUI操作は手動確認です。
 
 ## 設計書との主な差分
 
