@@ -2,6 +2,7 @@ pub mod app;
 pub mod archive;
 pub mod cache;
 pub mod cli;
+pub mod config;
 pub mod decoder;
 pub(crate) mod event;
 pub mod headless;
