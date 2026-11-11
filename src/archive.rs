@@ -8,16 +8,9 @@ use zip::ZipArchive;
 const MAX_ENTRIES: usize = 100_000;
 const MAX_ENTRY_BYTES: u64 = 512 * 1024 * 1024;
 
-#[derive(Debug, Clone)]
-pub struct Page {
-    pub name: String,
-    /// Entry index in the ZIP central directory.
-    pub entry: usize,
-}
-
 pub struct Archive {
     zip: ZipArchive<File>,
-    pub pages: Vec<Page>,
+    pub pages: Vec<usize>,
 }
 
 impl Archive {
@@ -32,6 +25,7 @@ impl Archive {
             zip,
             pages: Vec::new(),
         };
+        let mut pages = Vec::new();
         for entry in 0..archive.zip.len() {
             // Skip entries whose local header or name is unreadable instead of
             // failing the whole archive.
@@ -47,13 +41,11 @@ impl Archive {
             if !is_page_name(&name) || file.size() > MAX_ENTRY_BYTES {
                 continue;
             }
-            archive.pages.push(Page {
-                name: name.into_owned(),
-                entry,
-            });
+            pages.push((name.into_owned(), entry));
         }
 
-        archive.pages.sort_by(|a, b| natural_cmp(&a.name, &b.name));
+        pages.sort_by(|a, b| natural_cmp(&a.0, &b.0));
+        archive.pages = pages.into_iter().map(|(_, entry)| entry).collect();
         Ok(archive)
     }
 
