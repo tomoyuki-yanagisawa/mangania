@@ -1,0 +1,13 @@
+[package]
+name = "mangania"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
+softbuffer = "0.4.8"
+winit = "0.30.12"
+zip = { version = "9.5.1", default-features = false, features = ["deflate"] }
+
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
+muda = "0.21.2"
