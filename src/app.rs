@@ -101,6 +101,7 @@ impl App {
                 self.refresh();
             }
             Err(error) => {
+                eprintln!("mangania: {error}");
                 self.error = Some(error);
                 self.update_title();
             }
@@ -324,6 +325,7 @@ impl App {
                     changed = true;
                 }
                 Err(message) => {
+                    eprintln!("mangania: page {}: {message}", page + 1);
                     viewer.errors.insert(page, message);
                     changed = true;
                 }

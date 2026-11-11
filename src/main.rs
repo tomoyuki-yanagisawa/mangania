@@ -1,30 +1,49 @@
-mod app;
-mod archive;
-mod decoder;
-#[cfg(any(target_os = "windows", target_os = "macos"))]
-mod menu;
-mod prefetch;
-mod view;
-
+use std::error::Error;
 use std::path::PathBuf;
 
-fn main() {
-    let mut prefetch = 2usize;
-    let mut path = None;
-    let mut args = std::env::args_os().skip(1);
-    while let Some(arg) = args.next() {
-        if arg.to_str() == Some("--prefetch") {
-            prefetch = args
-                .next()
-                .and_then(|value| value.to_str().and_then(|value| value.parse().ok()))
-                .unwrap_or(2);
-        } else if path.is_none() {
-            path = Some(PathBuf::from(arg));
-        }
-    }
+use mangania::app;
+use mangania::cli::{self, Mode};
+use mangania::headless;
 
-    if let Err(error) = app::run(path, prefetch) {
+const USAGE: &str = "\
+usage: mangania [--prefetch N] [--list | --check | --render-page PAGE OUTPUT] [ARCHIVE]
+
+  --list             print indexed pages and exit
+  --check            decode every page and report errors
+  --render-page N O  write page N (1-based) to image file O
+  --prefetch N       number of pages to prefetch ahead (default 2)
+  --help             show this help";
+
+fn main() {
+    let args = match cli::parse(std::env::args_os().skip(1)) {
+        Ok(args) => args,
+        Err(error) => {
+            eprintln!("mangania: {error}");
+            std::process::exit(2);
+        }
+    };
+
+    if let Err(error) = run(args) {
         eprintln!("mangania: {error}");
         std::process::exit(1);
     }
+}
+
+fn run(args: cli::Args) -> Result<(), Box<dyn Error>> {
+    match args.mode {
+        Mode::Help => {
+            println!("{USAGE}");
+            Ok(())
+        }
+        Mode::Gui => app::run(args.path, args.prefetch),
+        Mode::List => headless::list(&required_path(args.path)?),
+        Mode::Check => headless::check(&required_path(args.path)?),
+        Mode::Render { page, output } => {
+            headless::render_page(&required_path(args.path)?, page, &output)
+        }
+    }
+}
+
+fn required_path(path: Option<PathBuf>) -> Result<PathBuf, Box<dyn Error>> {
+    path.ok_or_else(|| std::io::Error::other("ARCHIVE path is required").into())
 }
