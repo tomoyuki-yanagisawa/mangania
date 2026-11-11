@@ -12,7 +12,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::keyboard::{Key, NamedKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
-use crate::archive::{Archive, Page};
+use crate::archive::Archive;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::menu::MenuBar;
 use crate::prefetch::{Prefetch, UserEvent};
@@ -42,7 +42,7 @@ struct App {
 
 struct Viewer {
     name: String,
-    pages: Vec<Page>,
+    pages: Vec<usize>,
     current: usize,
     prefetch: Prefetch,
     cache: HashMap<usize, Arc<RgbaImage>>,
@@ -94,12 +94,7 @@ impl App {
                 });
                 self.error = None;
                 self.scroll = 0.0;
-
-                if let Some(viewer) = self.viewer.as_mut() {
-                    viewer.request_current(self.spread);
-                    viewer.prefetch_around();
-                }
-                self.update_title();
+                self.refresh();
             }
             Err(error) => {
                 self.error = Some(error);
@@ -135,11 +130,8 @@ impl App {
 
         viewer.current = page;
         viewer.prefetch.clear_pending();
-        viewer.request_current(spread);
-        viewer.prefetch_around();
         self.error = None;
-        self.update_title();
-        self.request_redraw();
+        self.refresh();
     }
 
     fn set_spread(&mut self, spread: bool) {
@@ -156,11 +148,8 @@ impl App {
                 viewer.current -= viewer.current % 2;
             }
             viewer.prefetch.clear_pending();
-            viewer.request_current(spread);
-            viewer.prefetch_around();
         }
-        self.update_title();
-        self.request_redraw();
+        self.refresh();
     }
 
     fn handle_scroll(&mut self, delta: MouseScrollDelta) {
@@ -258,6 +247,15 @@ impl App {
         }
     }
 
+    fn refresh(&mut self) {
+        if let Some(viewer) = self.viewer.as_mut() {
+            viewer.request_current(self.spread);
+            viewer.prefetch_around();
+        }
+        self.update_title();
+        self.request_redraw();
+    }
+
     fn draw(&mut self) {
         let Some(window) = &self.window else {
             return;
@@ -331,10 +329,7 @@ impl App {
             return;
         }
 
-        viewer.request_current(self.spread);
-        viewer.prefetch_around();
-        self.update_title();
-        self.request_redraw();
+        self.refresh();
     }
 
     #[cfg(any(target_os = "windows", target_os = "macos"))]
@@ -489,7 +484,7 @@ impl Viewer {
         {
             return;
         }
-        let entry = self.pages[page].entry;
+        let entry = self.pages[page];
         self.prefetch.request(page, entry, urgent);
     }
 
