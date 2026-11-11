@@ -2,6 +2,7 @@
 
 ZIP 内の漫画画像を表示する、小さなネイティブビューアの試作です。
 Windows 7 を優先しつつ、macOS / Linux でもビルドできる構成にしています。
+設計は [docs/DESIGN.v1.md](docs/DESIGN.v1.md) を参照してください。
 
 ## 使い方
 
@@ -112,6 +113,6 @@ cargo clippy --all-targets
 - UI は libui-ng ではなく `winit` + `softbuffer`（D&D 必須のため）
 - ZIP は libarchive ではなく `zip` crate
 - JPEG 2000 は対象外。設定画面、ディスクキャッシュ、閲覧位置保存は未実装
-- 設定はメニューバーの表示モード切替のみ。読み方向は右→左固定
+- 設定はメニューバーの表示モード・全画面切替のみ。読み方向は右→左固定
 - macOS でのみ実行確認済み。Windows / Linux はコンパイル確認まで
 - Windows 7 はビルド手順とコードのみ（実機未検証）
