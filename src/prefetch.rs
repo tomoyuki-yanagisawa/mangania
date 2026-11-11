@@ -118,6 +118,15 @@ impl Prefetch {
         }
         finished
     }
+
+    /// Drops queued jobs that have not started yet. Running jobs cannot be cancelled.
+    pub fn clear_pending(&mut self) {
+        let (lock, _) = &*self.queue;
+        let mut queue = lock.lock().unwrap();
+        while let Some(job) = queue.jobs.pop_front() {
+            self.in_flight.remove(&job.page);
+        }
+    }
 }
 
 impl Drop for Prefetch {
