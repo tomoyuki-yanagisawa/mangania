@@ -121,27 +121,6 @@ struct KeyChord {
 }
 
 impl KeyChord {
-    fn named(key: NamedKey) -> Self {
-        Self {
-            modifiers: ModifiersState::empty(),
-            key: KeyCode::Named(key),
-        }
-    }
-
-    fn character(key: char) -> Self {
-        Self {
-            modifiers: ModifiersState::empty(),
-            key: KeyCode::Char(key),
-        }
-    }
-
-    fn with(self, modifiers: ModifiersState) -> Self {
-        Self {
-            modifiers: self.modifiers | modifiers,
-            key: self.key,
-        }
-    }
-
     fn parse(text: &str) -> Option<Self> {
         let parts = split_chord(text)?;
         let (key, modifier_tokens) = parts.split_last()?;
@@ -288,24 +267,14 @@ pub struct KeyBindings {
 
 impl Default for KeyBindings {
     fn default() -> Self {
-        Self {
-            pairs: vec![
-                (KeyChord::named(NamedKey::ArrowRight), Action::Next),
-                (KeyChord::named(NamedKey::ArrowLeft), Action::Prev),
-                (KeyChord::named(NamedKey::Home), Action::First),
-                (KeyChord::named(NamedKey::End), Action::Last),
-                (KeyChord::character('v'), Action::ToggleSpread),
-                (KeyChord::named(NamedKey::F11), Action::ToggleFullscreen),
-                (
-                    KeyChord::character('s').with(ModifiersState::CONTROL),
-                    Action::SavePage,
-                ),
-                (
-                    KeyChord::character('s').with(ModifiersState::SUPER),
-                    Action::SavePage,
-                ),
-                (KeyChord::named(NamedKey::Escape), Action::Quit),
-            ],
+        match toml::from_str::<RawKeyBindings>(DEFAULT_KEYBINDINGS) {
+            Ok(raw) => Self {
+                pairs: resolve_bindings(raw.keys, "keybindings.toml", "key", None, KeyChord::parse),
+            },
+            Err(error) => {
+                eprintln!("mangania: built-in keybindings: {error}");
+                Self { pairs: Vec::new() }
+            }
         }
     }
 }
@@ -330,43 +299,23 @@ impl KeyBindings {
     }
 
     pub fn parse(text: &str) -> Self {
+        let defaults = Self::default();
         let raw: RawKeyBindings = match toml::from_str(text) {
             Ok(raw) => raw,
             Err(error) => {
                 eprintln!("mangania: keybindings.toml: {error}");
-                return Self::default();
+                return defaults;
             }
         };
-        Self::from_map(raw.keys)
-    }
-
-    fn from_map(map: BTreeMap<String, Vec<String>>) -> Self {
-        let defaults = Self::default();
-        let mut canonical = canonical_actions(map, "keybindings.toml");
-        let mut pairs = Vec::new();
-        for action in Action::ALL {
-            match canonical.remove(action.as_str()) {
-                Some(specs) => {
-                    for spec in specs {
-                        match KeyChord::parse(&spec) {
-                            Some(chord) => pairs.push((chord, action)),
-                            None => eprintln!(
-                                "mangania: keybindings.toml: invalid key {spec:?} for {}",
-                                action.as_str()
-                            ),
-                        }
-                    }
-                }
-                None => pairs.extend(
-                    defaults
-                        .pairs
-                        .iter()
-                        .filter(|(_, default)| *default == action)
-                        .copied(),
-                ),
-            }
+        Self {
+            pairs: resolve_bindings(
+                raw.keys,
+                "keybindings.toml",
+                "key",
+                Some(&defaults.pairs),
+                KeyChord::parse,
+            ),
         }
-        Self { pairs }
     }
 
     pub fn action_for(&self, key: &Key, modifiers: ModifiersState) -> Option<Action> {
@@ -393,36 +342,29 @@ pub enum MouseInput {
 impl MouseInput {
     fn parse(text: &str) -> Option<Self> {
         let normalized = text.trim().to_ascii_lowercase().replace(['-', ' '], "_");
-        Some(match normalized.as_str() {
-            "left" => MouseInput::Button(MouseButton::Left),
-            "right" => MouseInput::Button(MouseButton::Right),
-            "middle" => MouseInput::Button(MouseButton::Middle),
-            "back" => MouseInput::Button(MouseButton::Back),
-            "forward" => MouseInput::Button(MouseButton::Forward),
-            "double_left" | "left_double" | "dbl_left" => {
-                MouseInput::DoubleClick(MouseButton::Left)
-            }
-            "double_right" | "right_double" | "dbl_right" => {
-                MouseInput::DoubleClick(MouseButton::Right)
-            }
-            "double_middle" | "middle_double" | "dbl_middle" => {
-                MouseInput::DoubleClick(MouseButton::Middle)
-            }
-            "double_back" | "back_double" | "dbl_back" => {
-                MouseInput::DoubleClick(MouseButton::Back)
-            }
-            "double_forward" | "forward_double" | "dbl_forward" => {
-                MouseInput::DoubleClick(MouseButton::Forward)
-            }
-            "wheel_up" | "wheelup" | "scroll_up" | "scrollup" => {
-                MouseInput::Wheel(WheelDirection::Up)
-            }
-            "wheel_down" | "wheeldown" | "scroll_down" | "scrolldown" => {
-                MouseInput::Wheel(WheelDirection::Down)
-            }
-            _ => return None,
-        })
+        if let Some(name) = normalized.strip_prefix("double_") {
+            return mouse_button(name).map(MouseInput::DoubleClick);
+        }
+        if let Some(name) = normalized.strip_prefix("wheel_") {
+            return Some(MouseInput::Wheel(match name {
+                "up" => WheelDirection::Up,
+                "down" => WheelDirection::Down,
+                _ => return None,
+            }));
+        }
+        mouse_button(&normalized).map(MouseInput::Button)
     }
+}
+
+fn mouse_button(name: &str) -> Option<MouseButton> {
+    Some(match name {
+        "left" => MouseButton::Left,
+        "right" => MouseButton::Right,
+        "middle" => MouseButton::Middle,
+        "back" => MouseButton::Back,
+        "forward" => MouseButton::Forward,
+        _ => return None,
+    })
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -443,16 +385,16 @@ pub struct MouseBindings {
 
 impl Default for MouseBindings {
     fn default() -> Self {
-        Self {
-            pairs: vec![
-                (MouseInput::Button(MouseButton::Left), Action::Next),
-                (MouseInput::Wheel(WheelDirection::Down), Action::Next),
-                (MouseInput::Button(MouseButton::Right), Action::Prev),
-                (MouseInput::Wheel(WheelDirection::Up), Action::Prev),
-                (MouseInput::DoubleClick(MouseButton::Left), Action::SavePage),
-            ],
-            threshold: DEFAULT_WHEEL_THRESHOLD,
-            double_click: Duration::from_millis(DEFAULT_DOUBLE_CLICK_MS),
+        match toml::from_str::<RawMouseBindings>(DEFAULT_MOUSE) {
+            Ok(raw) => Self::from_raw(raw, None),
+            Err(error) => {
+                eprintln!("mangania: built-in mouse bindings: {error}");
+                Self {
+                    pairs: Vec::new(),
+                    threshold: DEFAULT_WHEEL_THRESHOLD,
+                    double_click: Duration::from_millis(DEFAULT_DOUBLE_CLICK_MS),
+                }
+            }
         }
     }
 }
@@ -477,13 +419,18 @@ impl MouseBindings {
     }
 
     pub fn parse(text: &str) -> Self {
+        let defaults = Self::default();
         let raw: RawMouseBindings = match toml::from_str(text) {
             Ok(raw) => raw,
             Err(error) => {
                 eprintln!("mangania: mouse.toml: {error}");
-                return Self::default();
+                return defaults;
             }
         };
+        Self::from_raw(raw, Some(&defaults))
+    }
+
+    fn from_raw(raw: RawMouseBindings, defaults: Option<&Self>) -> Self {
         let threshold = match raw.wheel_threshold {
             Some(value) if value.is_finite() && value > 0.0 => value,
             Some(value) => {
@@ -504,41 +451,14 @@ impl MouseBindings {
             }
             None => Duration::from_millis(DEFAULT_DOUBLE_CLICK_MS),
         };
-        Self::from_map(raw.bindings, threshold, double_click)
-    }
-
-    fn from_map(
-        map: BTreeMap<String, Vec<String>>,
-        threshold: f32,
-        double_click: Duration,
-    ) -> Self {
-        let defaults = Self::default();
-        let mut canonical = canonical_actions(map, "mouse.toml");
-        let mut pairs = Vec::new();
-        for action in Action::ALL {
-            match canonical.remove(action.as_str()) {
-                Some(specs) => {
-                    for spec in specs {
-                        match MouseInput::parse(&spec) {
-                            Some(input) => pairs.push((input, action)),
-                            None => eprintln!(
-                                "mangania: mouse.toml: invalid input {spec:?} for {}",
-                                action.as_str()
-                            ),
-                        }
-                    }
-                }
-                None => pairs.extend(
-                    defaults
-                        .pairs
-                        .iter()
-                        .filter(|(_, default)| *default == action)
-                        .copied(),
-                ),
-            }
-        }
         Self {
-            pairs,
+            pairs: resolve_bindings(
+                raw.bindings,
+                "mouse.toml",
+                "input",
+                defaults.map(|defaults| defaults.pairs.as_slice()),
+                MouseInput::parse,
+            ),
             threshold,
             double_click,
         }
@@ -566,6 +486,43 @@ impl MouseBindings {
     pub fn single_action(&self, button: MouseButton) -> Option<Action> {
         self.action_for(MouseInput::Button(button))
     }
+}
+
+fn resolve_bindings<T: Copy>(
+    map: BTreeMap<String, Vec<String>>,
+    file: &str,
+    what: &str,
+    defaults: Option<&[(T, Action)]>,
+    parse: impl Fn(&str) -> Option<T>,
+) -> Vec<(T, Action)> {
+    let mut canonical = canonical_actions(map, file);
+    let mut pairs = Vec::new();
+    for action in Action::ALL {
+        match canonical.remove(action.as_str()) {
+            Some(specs) => {
+                for spec in specs {
+                    match parse(&spec) {
+                        Some(input) => pairs.push((input, action)),
+                        None => eprintln!(
+                            "mangania: {file}: invalid {what} {spec:?} for {}",
+                            action.as_str()
+                        ),
+                    }
+                }
+            }
+            None => {
+                if let Some(defaults) = defaults {
+                    pairs.extend(
+                        defaults
+                            .iter()
+                            .filter(|(_, default)| *default == action)
+                            .copied(),
+                    );
+                }
+            }
+        }
+    }
+    pairs
 }
 
 fn canonical_actions(
