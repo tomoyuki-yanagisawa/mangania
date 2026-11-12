@@ -3,6 +3,7 @@ pub mod archive;
 pub mod bindings;
 pub mod cache;
 pub mod cli;
+pub(crate) mod click;
 pub mod config;
 pub mod decoder;
 pub(crate) mod event;

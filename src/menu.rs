@@ -1,7 +1,8 @@
-use muda::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use muda::{CheckMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
 use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
 
+use crate::bindings::Action;
 use crate::event::UserEvent;
 
 pub struct MenuBar {
@@ -64,6 +65,28 @@ impl MenuBar {
             spread: spread_item,
             fullscreen,
             menu,
+        }
+    }
+
+    pub fn action_for(&self, id: &MenuId) -> Option<Action> {
+        if id == self.save.id() {
+            Some(Action::SavePage)
+        } else if id == self.next.id() {
+            Some(Action::Next)
+        } else if id == self.prev.id() {
+            Some(Action::Prev)
+        } else if id == self.first.id() {
+            Some(Action::First)
+        } else if id == self.last.id() {
+            Some(Action::Last)
+        } else if id == self.single.id() {
+            Some(Action::SinglePage)
+        } else if id == self.spread.id() {
+            Some(Action::SpreadPage)
+        } else if id == self.fullscreen.id() {
+            Some(Action::ToggleFullscreen)
+        } else {
+            None
         }
     }
 

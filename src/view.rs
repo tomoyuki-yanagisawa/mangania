@@ -10,22 +10,7 @@ pub fn blank(buffer: &mut [u32]) {
 
 /// Fits one page into the window.
 pub fn render(buffer: &mut [u32], width: usize, height: usize, image: &RgbaImage) {
-    blank(buffer);
-    if width == 0 || height == 0 || image.width() == 0 || image.height() == 0 {
-        return;
-    }
-
-    let (target_width, target_height) = fit(image, width, height);
-    let x = (width as isize - target_width as isize) / 2;
-    let y = (height as isize - target_height as isize) / 2;
-    blit_scaled(
-        buffer,
-        width,
-        height,
-        image,
-        (x, y),
-        (target_width, target_height),
-    );
+    render_pages(buffer, width, height, &[Some(image)]);
 }
 
 /// Fits two pages side by side. `left` is drawn first, then `right`.
@@ -36,16 +21,23 @@ pub fn render_spread(
     left: Option<&RgbaImage>,
     right: Option<&RgbaImage>,
 ) {
+    render_pages(buffer, width, height, &[left, right]);
+}
+
+/// Fits the given pages side by side, preserving their relative sizes.
+pub fn render_pages(buffer: &mut [u32], width: usize, height: usize, pages: &[Option<&RgbaImage>]) {
     blank(buffer);
     if width == 0 || height == 0 {
         return;
     }
 
-    let total_width =
-        left.map_or(0, |image| image.width()) + right.map_or(0, |image| image.width());
-    let max_height = left
-        .map_or(0, |image| image.height())
-        .max(right.map_or(0, |image| image.height()));
+    let total_width: u32 = pages.iter().flatten().map(|image| image.width()).sum();
+    let max_height = pages
+        .iter()
+        .flatten()
+        .map(|image| image.height())
+        .max()
+        .unwrap_or(0);
     if total_width == 0 || max_height == 0 {
         return;
     }
@@ -56,7 +48,7 @@ pub fn render_spread(
     let start_y = (height as isize - draw_height as isize) / 2;
 
     let mut x = start_x;
-    for image in [left, right].into_iter().flatten() {
+    for image in pages.iter().flatten() {
         let (target_width, target_height) = scaled(image.width(), image.height(), scale);
         let y = start_y + (draw_height as isize - target_height as isize) / 2;
         blit_scaled(
@@ -69,12 +61,6 @@ pub fn render_spread(
         );
         x += target_width as isize;
     }
-}
-
-fn fit(image: &RgbaImage, width: usize, height: usize) -> (u32, u32) {
-    let (image_width, image_height) = image.dimensions();
-    let scale = (width as f64 / image_width as f64).min(height as f64 / image_height as f64);
-    scaled(image_width, image_height, scale)
 }
 
 fn scaled(width: u32, height: u32, scale: f64) -> (u32, u32) {
