@@ -11,45 +11,41 @@ fn character(key: &str) -> Key {
     Key::Character(SmolStr::new(key))
 }
 
+fn assert_key(
+    bindings: &KeyBindings,
+    key: Key,
+    modifiers: ModifiersState,
+    expected: Option<Action>,
+) {
+    assert_eq!(
+        bindings.action_for(&key, modifiers),
+        expected,
+        "key {key:?} with {modifiers:?}"
+    );
+}
+
+fn assert_mouse(bindings: &MouseBindings, input: MouseInput, expected: Option<Action>) {
+    assert_eq!(bindings.action_for(input), expected, "input {input:?}");
+}
+
 #[test]
 fn default_key_bindings_work() {
     let bindings = KeyBindings::default();
-    assert_eq!(
-        bindings.action_for(&Key::Named(NamedKey::ArrowRight), ModifiersState::empty()),
-        Some(Action::Next)
-    );
-    assert_eq!(
-        bindings.action_for(&Key::Named(NamedKey::ArrowLeft), ModifiersState::empty()),
-        Some(Action::Prev)
-    );
-    assert_eq!(
-        bindings.action_for(&Key::Named(NamedKey::Home), ModifiersState::empty()),
-        Some(Action::First)
-    );
-    assert_eq!(
-        bindings.action_for(&Key::Named(NamedKey::End), ModifiersState::empty()),
-        Some(Action::Last)
-    );
-    assert_eq!(
-        bindings.action_for(&character("v"), ModifiersState::empty()),
-        Some(Action::ToggleSpread)
-    );
-    assert_eq!(
-        bindings.action_for(&Key::Named(NamedKey::F11), ModifiersState::empty()),
-        Some(Action::ToggleFullscreen)
-    );
-    assert_eq!(
-        bindings.action_for(&character("s"), ModifiersState::CONTROL),
-        Some(Action::SavePage)
-    );
-    assert_eq!(
-        bindings.action_for(&character("s"), ModifiersState::SUPER),
-        Some(Action::SavePage)
-    );
-    assert_eq!(
-        bindings.action_for(&Key::Named(NamedKey::Escape), ModifiersState::empty()),
-        Some(Action::Quit)
-    );
+    let empty = ModifiersState::empty();
+    let cases = [
+        (Key::Named(NamedKey::ArrowRight), empty, Action::Next),
+        (Key::Named(NamedKey::ArrowLeft), empty, Action::Prev),
+        (Key::Named(NamedKey::Home), empty, Action::First),
+        (Key::Named(NamedKey::End), empty, Action::Last),
+        (character("v"), empty, Action::ToggleSpread),
+        (Key::Named(NamedKey::F11), empty, Action::ToggleFullscreen),
+        (character("s"), ModifiersState::CONTROL, Action::SavePage),
+        (character("s"), ModifiersState::SUPER, Action::SavePage),
+        (Key::Named(NamedKey::Escape), empty, Action::Quit),
+    ];
+    for (key, modifiers, expected) in cases {
+        assert_key(&bindings, key, modifiers, Some(expected));
+    }
 }
 
 #[test]
@@ -74,58 +70,46 @@ save = ["Ctrl+Shift+S"]
 quit = []
 "#,
     );
+    let empty = ModifiersState::empty();
 
-    assert_eq!(
-        bindings.action_for(&character("n"), ModifiersState::empty()),
-        Some(Action::Next)
+    assert_key(&bindings, character("n"), empty, Some(Action::Next));
+    assert_key(
+        &bindings,
+        Key::Named(NamedKey::PageDown),
+        empty,
+        Some(Action::Next),
     );
-    assert_eq!(
-        bindings.action_for(&Key::Named(NamedKey::PageDown), ModifiersState::empty()),
-        Some(Action::Next)
+    assert_key(&bindings, Key::Named(NamedKey::ArrowRight), empty, None);
+    assert_key(
+        &bindings,
+        character("s"),
+        ModifiersState::CONTROL | ModifiersState::SHIFT,
+        Some(Action::SavePage),
     );
-    assert_eq!(
-        bindings.action_for(&Key::Named(NamedKey::ArrowRight), ModifiersState::empty()),
-        None
-    );
-    assert_eq!(
-        bindings.action_for(
-            &character("s"),
-            ModifiersState::CONTROL | ModifiersState::SHIFT
-        ),
-        Some(Action::SavePage)
-    );
-    assert_eq!(
-        bindings.action_for(&character("s"), ModifiersState::CONTROL),
-        None
-    );
-    assert_eq!(
-        bindings.action_for(&Key::Named(NamedKey::Escape), ModifiersState::empty()),
-        None
-    );
+    assert_key(&bindings, character("s"), ModifiersState::CONTROL, None);
+    assert_key(&bindings, Key::Named(NamedKey::Escape), empty, None);
 }
 
 #[test]
 fn modifiers_must_match_exactly() {
     let bindings = KeyBindings::default();
-    assert_eq!(
-        bindings.action_for(
-            &character("s"),
-            ModifiersState::CONTROL | ModifiersState::SHIFT
-        ),
-        None
+    assert_key(
+        &bindings,
+        character("s"),
+        ModifiersState::CONTROL | ModifiersState::SHIFT,
+        None,
     );
-    assert_eq!(
-        bindings.action_for(&character("v"), ModifiersState::SHIFT),
-        None
-    );
+    assert_key(&bindings, character("v"), ModifiersState::SHIFT, None);
 }
 
 #[test]
 fn keys_are_case_insensitive() {
     let bindings = KeyBindings::parse("[keys]\ntoggle_spread = [\"V\"]\n");
-    assert_eq!(
-        bindings.action_for(&character("v"), ModifiersState::empty()),
-        Some(Action::ToggleSpread)
+    assert_key(
+        &bindings,
+        character("v"),
+        ModifiersState::empty(),
+        Some(Action::ToggleSpread),
     );
 }
 
@@ -138,39 +122,31 @@ next = ["NotAKey", "Ctrl+Nope"]
 unknown_action = ["x"]
 "#,
     );
-    assert_eq!(
-        bindings.action_for(&Key::Named(NamedKey::ArrowRight), ModifiersState::empty()),
-        None
-    );
-    assert_eq!(
-        bindings.action_for(&Key::Named(NamedKey::ArrowLeft), ModifiersState::empty()),
-        Some(Action::Prev)
+    let empty = ModifiersState::empty();
+
+    assert_key(&bindings, Key::Named(NamedKey::ArrowRight), empty, None);
+    assert_key(
+        &bindings,
+        Key::Named(NamedKey::ArrowLeft),
+        empty,
+        Some(Action::Prev),
     );
 }
 
 #[test]
 fn default_mouse_bindings_work() {
     let bindings = MouseBindings::default();
-    assert_eq!(
-        bindings.action_for(MouseInput::Button(MouseButton::Left)),
-        Some(Action::Next)
-    );
-    assert_eq!(
-        bindings.action_for(MouseInput::Button(MouseButton::Right)),
-        Some(Action::Prev)
-    );
-    assert_eq!(
-        bindings.action_for(MouseInput::Wheel(WheelDirection::Down)),
-        Some(Action::Next)
-    );
-    assert_eq!(
-        bindings.action_for(MouseInput::Wheel(WheelDirection::Up)),
-        Some(Action::Prev)
-    );
-    assert_eq!(
-        bindings.double_action(MouseButton::Left),
-        Some(Action::SavePage)
-    );
+    let cases = [
+        (MouseInput::Button(MouseButton::Left), Action::Next),
+        (MouseInput::Button(MouseButton::Right), Action::Prev),
+        (MouseInput::Wheel(WheelDirection::Down), Action::Next),
+        (MouseInput::Wheel(WheelDirection::Up), Action::Prev),
+        (MouseInput::DoubleClick(MouseButton::Left), Action::SavePage),
+    ];
+    for (input, expected) in cases {
+        assert_mouse(&bindings, input, Some(expected));
+    }
+
     assert_eq!(
         bindings.single_action(MouseButton::Left),
         Some(Action::Next)
@@ -192,33 +168,26 @@ prev = []
 save_page = ["double_left", "double_middle"]
 "#,
     );
+    let cases = [
+        (MouseInput::Button(MouseButton::Middle), Some(Action::Next)),
+        (MouseInput::Wheel(WheelDirection::Up), Some(Action::Next)),
+        (MouseInput::Button(MouseButton::Left), None),
+        (MouseInput::Button(MouseButton::Right), None),
+        (
+            MouseInput::DoubleClick(MouseButton::Left),
+            Some(Action::SavePage),
+        ),
+        (
+            MouseInput::DoubleClick(MouseButton::Middle),
+            Some(Action::SavePage),
+        ),
+    ];
+    for (input, expected) in cases {
+        assert_mouse(&bindings, input, expected);
+    }
 
     assert_eq!(bindings.wheel_threshold(), 25.5);
     assert_eq!(bindings.double_click_interval(), Duration::from_millis(250));
-    assert_eq!(
-        bindings.action_for(MouseInput::Button(MouseButton::Middle)),
-        Some(Action::Next)
-    );
-    assert_eq!(
-        bindings.action_for(MouseInput::Wheel(WheelDirection::Up)),
-        Some(Action::Next)
-    );
-    assert_eq!(
-        bindings.action_for(MouseInput::Button(MouseButton::Left)),
-        None
-    );
-    assert_eq!(
-        bindings.action_for(MouseInput::Button(MouseButton::Right)),
-        None
-    );
-    assert_eq!(
-        bindings.action_for(MouseInput::DoubleClick(MouseButton::Left)),
-        Some(Action::SavePage)
-    );
-    assert_eq!(
-        bindings.action_for(MouseInput::DoubleClick(MouseButton::Middle)),
-        Some(Action::SavePage)
-    );
 }
 
 #[test]
