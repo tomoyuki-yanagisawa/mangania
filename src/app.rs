@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use winit::application::ApplicationHandler;
-use winit::dpi::{LogicalSize, PhysicalPosition};
+use winit::dpi::LogicalSize;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, ModifiersState};
@@ -13,6 +13,7 @@ use winit::window::{Fullscreen, Window, WindowId};
 
 use crate::archive::Archive;
 use crate::bindings::{Action, KeyBindings, MouseBindings, MouseInput, WheelDirection};
+use crate::click::ClickTracker;
 use crate::config::Config;
 use crate::event::UserEvent;
 use crate::export;
@@ -23,21 +24,12 @@ use crate::prefetch::Prefetch;
 use crate::view;
 use crate::viewer::Viewer;
 
-const DOUBLE_CLICK_DISTANCE: f64 = 10.0;
-
 pub fn run(path: Option<PathBuf>, prefetch_depth: usize) -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let proxy = event_loop.create_proxy();
     event_loop.run_app(&mut App::new(path, prefetch_depth, proxy))?;
     Ok(())
-}
-
-struct PendingClick {
-    button: MouseButton,
-    action: Option<Action>,
-    position: PhysicalPosition<f64>,
-    deadline: Instant,
 }
 
 struct App {
@@ -51,8 +43,7 @@ struct App {
     scroll: f32,
     last_frame: Vec<u32>,
     modifiers: ModifiersState,
-    cursor: PhysicalPosition<f64>,
-    pending_click: Option<PendingClick>,
+    clicks: ClickTracker,
     config: Config,
     keys: KeyBindings,
     mouse: MouseBindings,
@@ -78,8 +69,7 @@ impl App {
             scroll: 0.0,
             last_frame: Vec::new(),
             modifiers: ModifiersState::empty(),
-            cursor: PhysicalPosition::new(0.0, 0.0),
-            pending_click: None,
+            clicks: ClickTracker::new(),
             config,
             keys,
             mouse,
@@ -176,52 +166,22 @@ impl App {
     }
 
     fn handle_click(&mut self, button: MouseButton, event_loop: &ActiveEventLoop) {
-        let double = self.mouse.double_action(button);
-        if double.is_none() {
-            self.flush_pending_click(event_loop);
-            if let Some(action) = self.mouse.single_action(button) {
-                self.perform(action, event_loop);
-            }
-            self.update_click_timer(event_loop);
-            return;
+        let actions = self.clicks.press(button, &self.mouse, Instant::now());
+        for action in actions {
+            self.perform(action, event_loop);
         }
-
-        let now = Instant::now();
-        let interval = self.mouse.double_click_interval();
-        if let Some(pending) = self.pending_click.take() {
-            let is_double = is_double_click(&pending, button, self.cursor, now);
-            if is_double {
-                if let Some(action) = double {
-                    self.perform(action, event_loop);
-                }
-                self.update_click_timer(event_loop);
-                return;
-            }
-            if let Some(action) = pending.action {
-                self.perform(action, event_loop);
-            }
-        }
-
-        self.pending_click = Some(PendingClick {
-            button,
-            action: self.mouse.single_action(button),
-            position: self.cursor,
-            deadline: now + interval,
-        });
         self.update_click_timer(event_loop);
     }
 
     fn flush_pending_click(&mut self, event_loop: &ActiveEventLoop) {
-        if let Some(pending) = self.pending_click.take()
-            && let Some(action) = pending.action
-        {
+        if let Some(action) = self.clicks.flush() {
             self.perform(action, event_loop);
         }
     }
 
     fn update_click_timer(&self, event_loop: &ActiveEventLoop) {
-        let control_flow = match &self.pending_click {
-            Some(pending) => ControlFlow::WaitUntil(pending.deadline),
+        let control_flow = match self.clicks.deadline() {
+            Some(deadline) => ControlFlow::WaitUntil(deadline),
             None => ControlFlow::Wait,
         };
         event_loop.set_control_flow(control_flow);
@@ -427,22 +387,17 @@ impl App {
                 view::blank(&mut buffer);
             }
         } else if let Some(current) = current {
-            if self.spread {
-                view::render_spread(
-                    &mut buffer,
-                    size.width as usize,
-                    size.height as usize,
-                    next.as_deref(),
-                    Some(current.as_ref()),
-                );
+            let pages = if self.spread {
+                [next.as_deref(), Some(current.as_ref())]
             } else {
-                view::render(
-                    &mut buffer,
-                    size.width as usize,
-                    size.height as usize,
-                    current.as_ref(),
-                );
-            }
+                [None, Some(current.as_ref())]
+            };
+            view::render_pages(
+                &mut buffer,
+                size.width as usize,
+                size.height as usize,
+                &pages,
+            );
 
             self.last_frame.resize(buffer.len(), 0);
             self.last_frame.copy_from_slice(&buffer);
@@ -455,22 +410,19 @@ impl App {
             return;
         };
 
-        let mut changed = false;
-        for (page, result) in viewer.prefetch.poll() {
+        let results = viewer.prefetch.poll();
+        if results.is_empty() {
+            return;
+        }
+
+        for (page, result) in results {
             match result {
-                Ok(image) => {
-                    viewer.insert(page, image);
-                    changed = true;
-                }
+                Ok(image) => viewer.insert(page, image),
                 Err(message) => {
                     eprintln!("mangania: page {}: {message}", page + 1);
                     viewer.errors.insert(page, message);
-                    changed = true;
                 }
             }
-        }
-        if !changed {
-            return;
         }
 
         self.refresh();
@@ -478,49 +430,14 @@ impl App {
 
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     fn handle_menu(&mut self, event: muda::MenuEvent, event_loop: &ActiveEventLoop) {
-        let Some(menu) = &self.menu else {
-            return;
-        };
-        let action = if event.id == menu.save.id() {
-            Some(Action::SavePage)
-        } else if event.id == menu.next.id() {
-            Some(Action::Next)
-        } else if event.id == menu.prev.id() {
-            Some(Action::Prev)
-        } else if event.id == menu.first.id() {
-            Some(Action::First)
-        } else if event.id == menu.last.id() {
-            Some(Action::Last)
-        } else if event.id == menu.single.id() {
-            Some(Action::SinglePage)
-        } else if event.id == menu.spread.id() {
-            Some(Action::SpreadPage)
-        } else if event.id == menu.fullscreen.id() {
-            Some(Action::ToggleFullscreen)
-        } else {
-            None
-        };
+        let action = self
+            .menu
+            .as_ref()
+            .and_then(|menu| menu.action_for(&event.id));
         if let Some(action) = action {
             self.perform(action, event_loop);
         }
     }
-}
-
-fn is_double_click(
-    pending: &PendingClick,
-    button: MouseButton,
-    position: PhysicalPosition<f64>,
-    now: Instant,
-) -> bool {
-    pending.button == button
-        && now <= pending.deadline
-        && click_distance(pending.position, position) <= DOUBLE_CLICK_DISTANCE
-}
-
-fn click_distance(a: PhysicalPosition<f64>, b: PhysicalPosition<f64>) -> f64 {
-    let dx = a.x - b.x;
-    let dy = a.y - b.y;
-    (dx * dx + dy * dy).sqrt()
 }
 
 impl ApplicationHandler<UserEvent> for App {
@@ -582,9 +499,9 @@ impl ApplicationHandler<UserEvent> for App {
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         if self
-            .pending_click
-            .as_ref()
-            .is_some_and(|pending| Instant::now() >= pending.deadline)
+            .clicks
+            .deadline()
+            .is_some_and(|deadline| Instant::now() >= deadline)
         {
             self.flush_pending_click(event_loop);
         }
@@ -614,7 +531,7 @@ impl ApplicationHandler<UserEvent> for App {
                 self.modifiers = modifiers.state();
             }
             WindowEvent::CursorMoved { position, .. } => {
-                self.cursor = position;
+                self.clicks.cursor_moved(position);
             }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
@@ -625,47 +542,5 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::RedrawRequested => self.draw(),
             _ => {}
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::Duration;
-
-    #[test]
-    fn detects_double_click_by_button_time_and_distance() {
-        let now = Instant::now();
-        let pending = PendingClick {
-            button: MouseButton::Left,
-            action: Some(Action::Next),
-            position: PhysicalPosition::new(10.0, 10.0),
-            deadline: now + Duration::from_millis(400),
-        };
-
-        assert!(is_double_click(
-            &pending,
-            MouseButton::Left,
-            PhysicalPosition::new(14.0, 14.0),
-            now + Duration::from_millis(200)
-        ));
-        assert!(!is_double_click(
-            &pending,
-            MouseButton::Right,
-            PhysicalPosition::new(10.0, 10.0),
-            now + Duration::from_millis(200)
-        ));
-        assert!(!is_double_click(
-            &pending,
-            MouseButton::Left,
-            PhysicalPosition::new(10.0, 10.0),
-            now + Duration::from_millis(401)
-        ));
-        assert!(!is_double_click(
-            &pending,
-            MouseButton::Left,
-            PhysicalPosition::new(30.0, 10.0),
-            now + Duration::from_millis(200)
-        ));
     }
 }
