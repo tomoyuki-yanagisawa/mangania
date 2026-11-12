@@ -323,6 +323,14 @@ impl App {
             });
             window.request_redraw();
         }
+        self.update_fullscreen_menu(fullscreen);
+    }
+
+    fn update_fullscreen_menu(&self, _fullscreen: bool) {
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
+        if let Some(menu) = &self.menu {
+            menu.fullscreen.set_checked(_fullscreen);
+        }
     }
 
     fn update_title(&self) {
@@ -592,6 +600,7 @@ impl ApplicationHandler<UserEvent> for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
+                self.update_fullscreen_menu(self.is_fullscreen());
                 self.request_redraw();
             }
             WindowEvent::DroppedFile(path) => {
