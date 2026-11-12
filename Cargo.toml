@@ -6,7 +6,9 @@ edition = "2024"
 [dependencies]
 dirs = "7.0.0"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
+serde = { version = "1.0.229", features = ["derive"] }
 softbuffer = "0.4.8"
+toml = "1.2.1"
 winit = "0.30.12"
 zip = { version = "9.5.1", default-features = false, features = ["deflate"] }
 

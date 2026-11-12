@@ -1,9 +1,27 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+pub const DEFAULT_EXPORT_NAME: &str = "{book}_{page:03}";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Config {
     pub spread: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub export_dir: Option<PathBuf>,
+    pub export_name: String,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            spread: false,
+            export_dir: None,
+            export_name: DEFAULT_EXPORT_NAME.to_string(),
+        }
+    }
 }
 
 impl Config {
@@ -36,22 +54,33 @@ impl Config {
     }
 
     pub fn parse(text: &str) -> Self {
-        let mut config = Self::default();
-        for line in text.lines() {
-            let line = line.split('#').next().unwrap_or_default().trim();
-            let Some((key, value)) = line.split_once('=') else {
-                continue;
-            };
-            if key.trim() == "spread" {
-                config.spread = value.trim().eq_ignore_ascii_case("true");
-            }
-        }
-        config
+        toml::from_str(text).unwrap_or_default()
     }
 
     pub fn to_toml(&self) -> String {
-        format!("spread = {}\n", self.spread)
+        toml::to_string(self).unwrap_or_default()
     }
+
+    pub fn resolved_export_dir(&self) -> PathBuf {
+        self.export_dir
+            .as_deref()
+            .map(expand_tilde)
+            .unwrap_or_else(|| {
+                dirs::picture_dir()
+                    .or_else(dirs::home_dir)
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join("MangaNia")
+            })
+    }
+}
+
+fn expand_tilde(path: &Path) -> PathBuf {
+    if let Ok(rest) = path.strip_prefix("~")
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(rest);
+    }
+    path.to_path_buf()
 }
 
 fn config_path() -> Option<PathBuf> {

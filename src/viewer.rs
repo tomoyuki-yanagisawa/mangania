@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use image::RgbaImage;
@@ -11,6 +12,7 @@ const MAX_CACHE_BYTES: usize = 128 * 1024 * 1024;
 
 pub(crate) struct Viewer {
     pub(crate) file_name: String,
+    pub(crate) path: PathBuf,
     pub(crate) pages: Vec<usize>,
     pub(crate) current: usize,
     pub(crate) prefetch: Prefetch,
@@ -22,12 +24,14 @@ pub(crate) struct Viewer {
 impl Viewer {
     pub(crate) fn new(
         file_name: String,
+        path: PathBuf,
         pages: Vec<usize>,
         prefetch: Prefetch,
         depth: usize,
     ) -> Self {
         Self {
             file_name,
+            path,
             pages,
             current: 0,
             prefetch,

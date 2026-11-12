@@ -7,12 +7,13 @@ use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
-use winit::keyboard::{Key, NamedKey};
+use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
 use crate::archive::Archive;
 use crate::config::Config;
 use crate::event::UserEvent;
+use crate::export;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::menu::MenuBar;
 use crate::navigation;
@@ -38,7 +39,9 @@ struct App {
     spread: bool,
     scroll: f32,
     last_frame: Vec<u32>,
+    modifiers: ModifiersState,
     config: Config,
+    status: Option<String>,
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     menu: Option<MenuBar>,
     error: Option<String>,
@@ -57,7 +60,9 @@ impl App {
             spread: config.spread,
             scroll: 0.0,
             last_frame: Vec::new(),
+            modifiers: ModifiersState::empty(),
             config,
+            status: None,
             #[cfg(any(target_os = "windows", target_os = "macos"))]
             menu: None,
             error: None,
@@ -82,8 +87,15 @@ impl App {
                 let prefetch = Prefetch::start(archive, move || {
                     proxy.send_event(UserEvent::ImageReady).is_ok()
                 });
-                self.viewer = Some(Viewer::new(name, pages, prefetch, self.depth));
+                self.viewer = Some(Viewer::new(
+                    name,
+                    path.to_path_buf(),
+                    pages,
+                    prefetch,
+                    self.depth,
+                ));
                 self.error = None;
+                self.status = None;
                 self.scroll = 0.0;
                 self.last_frame.clear();
                 self.refresh();
@@ -117,6 +129,7 @@ impl App {
             return;
         }
         self.error = None;
+        self.status = None;
         self.refresh();
     }
 
@@ -125,6 +138,7 @@ impl App {
         self.spread = spread;
         self.config.spread = spread;
         self.config.save();
+        self.status = None;
         #[cfg(any(target_os = "windows", target_os = "macos"))]
         if let Some(menu) = &self.menu {
             menu.single.set_checked(!spread);
@@ -168,6 +182,12 @@ impl App {
             Key::Character(key) if key.as_str().eq_ignore_ascii_case("v") => {
                 self.set_spread(!self.spread);
             }
+            Key::Character(key)
+                if key.as_str().eq_ignore_ascii_case("s")
+                    && (self.modifiers.control_key() || self.modifiers.super_key()) =>
+            {
+                self.save_current_page();
+            }
             Key::Named(NamedKey::Escape) => {
                 if self.is_fullscreen() {
                     self.set_fullscreen(false);
@@ -184,6 +204,29 @@ impl App {
             .as_ref()
             .and_then(|window| window.fullscreen())
             .is_some()
+    }
+
+    fn save_current_page(&mut self) {
+        let Some(viewer) = &self.viewer else {
+            return;
+        };
+        match export::save_current_page(&viewer.path, viewer.current, &self.config) {
+            Ok(path) => {
+                eprintln!("mangania: saved {}", path.display());
+                let name = path
+                    .file_name()
+                    .map(|name| name.to_string_lossy())
+                    .unwrap_or_default();
+                self.status = Some(format!("saved {name}"));
+                self.error = None;
+            }
+            Err(error) => {
+                eprintln!("mangania: save: {error}");
+                self.status = Some(format!("save error: {error}"));
+            }
+        }
+        self.update_title();
+        self.request_redraw();
     }
 
     fn set_fullscreen(&mut self, fullscreen: bool) {
@@ -219,6 +262,10 @@ impl App {
             if let Some(error) = &self.error {
                 title.push_str(" - open error: ");
                 title.extend(error.chars().take(120));
+            }
+            if let Some(status) = &self.status {
+                title.push_str(" - ");
+                title.push_str(status);
             }
             title
         } else if let Some(error) = &self.error {
@@ -345,11 +392,14 @@ impl App {
         let prev = event.id == menu.prev.id();
         let first = event.id == menu.first.id();
         let last = event.id == menu.last.id();
+        let save = event.id == menu.save.id();
         let single = event.id == menu.single.id();
         let spread = event.id == menu.spread.id();
         let fullscreen = event.id == menu.fullscreen.id();
 
-        if next {
+        if save {
+            self.save_current_page();
+        } else if next {
             self.navigate(1);
         } else if prev {
             self.navigate(-1);
@@ -442,6 +492,9 @@ impl ApplicationHandler<UserEvent> for App {
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 self.handle_key(event.logical_key, event_loop);
+            }
+            WindowEvent::ModifiersChanged(modifiers) => {
+                self.modifiers = modifiers.state();
             }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,

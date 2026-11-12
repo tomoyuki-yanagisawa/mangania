@@ -5,6 +5,7 @@ use winit::window::Window;
 use crate::event::UserEvent;
 
 pub struct MenuBar {
+    pub save: MenuItem,
     pub next: MenuItem,
     pub prev: MenuItem,
     pub first: MenuItem,
@@ -22,6 +23,11 @@ impl MenuBar {
         let app = Submenu::new("MangaNia", true);
         let _ = app.append(&PredefinedMenuItem::quit(None));
         let _ = menu.append(&app);
+
+        let file = Submenu::new("ファイル", true);
+        let save = MenuItem::new("表示中のページを保存", true, None);
+        let _ = file.append(&save);
+        let _ = menu.append(&file);
 
         let navigation = Submenu::new("移動", true);
         let next = MenuItem::new("次のページ", true, None);
@@ -49,6 +55,7 @@ impl MenuBar {
         }));
 
         Self {
+            save,
             next,
             prev,
             first,
