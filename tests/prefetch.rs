@@ -1,24 +1,13 @@
 mod common;
 
-use std::io::Cursor;
 use std::time::{Duration, Instant};
 
-use image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
 use mangania::archive::Archive;
 use mangania::prefetch::Prefetch;
 
-fn png() -> Vec<u8> {
-    let image = RgbaImage::from_pixel(4, 3, Rgba([10, 20, 30, 255]));
-    let mut bytes = Vec::new();
-    DynamicImage::ImageRgba8(image)
-        .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png)
-        .unwrap();
-    bytes
-}
-
 #[test]
 fn prefetches_without_a_winit_event_loop() {
-    let image = png();
+    let image = common::png();
     let path = common::temp_zip(&[("1.png", image.as_slice())]);
     let archive = Archive::open(&path).unwrap();
     let entry = archive.pages[0];
