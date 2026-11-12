@@ -90,4 +90,22 @@ impl Viewer {
     pub(crate) fn insert(&mut self, page: usize, image: Arc<RgbaImage>) {
         self.cache.insert(page, image, self.current);
     }
+
+    /// Returns the current page, the next page in spread mode, and whether the
+    /// next page is still loading.
+    pub(crate) fn visible_pages(
+        &self,
+        spread: bool,
+    ) -> (Option<Arc<RgbaImage>>, Option<Arc<RgbaImage>>, bool) {
+        let next = if spread {
+            self.cache.get(self.current + 1)
+        } else {
+            None
+        };
+        let waiting = spread
+            && self.current + 1 < self.pages.len()
+            && next.is_none()
+            && !self.errors.contains_key(&(self.current + 1));
+        (self.cache.get(self.current), next, waiting)
+    }
 }

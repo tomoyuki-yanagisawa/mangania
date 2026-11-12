@@ -220,7 +220,10 @@ src/
 ├── event.rs     # winit/menu のユーザーイベント
 ├── cli.rs       # 引数解析
 ├── config.rs    # TOML設定（見開き・保存設定の永続化）
-├── bindings.rs  # キー・マウス割り当てのTOML設定
+├── bindings/
+│   ├── mod.rs   # アクション、共通の設定読み込み
+│   ├── key.rs   # キー割り当て
+│   └── mouse.rs # マウス割り当て
 ├── export.rs    # 表示中ページの保存、ファイル名テンプレート
 ├── headless.rs  # GUIなしの list / check / render-page
 ├── archive.rs   # ZIP 索引・自然順・読み出し
