@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::time::Duration;
 
 use serde::Deserialize;
 use winit::event::MouseButton;
@@ -10,6 +11,7 @@ use crate::config;
 pub const KEYBINDINGS_FILE: &str = "keybindings.toml";
 pub const MOUSE_FILE: &str = "mouse.toml";
 pub const DEFAULT_WHEEL_THRESHOLD: f32 = 50.0;
+pub const DEFAULT_DOUBLE_CLICK_MS: u64 = 400;
 
 pub const DEFAULT_KEYBINDINGS: &str = r#"# MangaNia key bindings.
 # Format: "Modifier+Key" (e.g. "Ctrl+S", "Shift+Left").
@@ -31,14 +33,19 @@ quit = ["Escape"]
 
 pub const DEFAULT_MOUSE: &str = r#"# MangaNia mouse bindings.
 # Buttons: left, right, middle, back, forward.
+# Double clicks: double_left, double_right, double_middle, double_back, double_forward.
 # Wheel: wheel_up, wheel_down.
 # wheel_threshold is how much scroll is needed to turn a page.
+# When a button has a double-click action, its single-click action is delayed
+# by double_click_ms so the two can be distinguished.
 
 wheel_threshold = 50.0
+double_click_ms = 400
 
 [bindings]
 next = ["left", "wheel_down"]
 prev = ["right", "wheel_up"]
+save_page = ["double_left"]
 "#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -379,6 +386,7 @@ pub enum WheelDirection {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MouseInput {
     Button(MouseButton),
+    DoubleClick(MouseButton),
     Wheel(WheelDirection),
 }
 
@@ -391,6 +399,21 @@ impl MouseInput {
             "middle" => MouseInput::Button(MouseButton::Middle),
             "back" => MouseInput::Button(MouseButton::Back),
             "forward" => MouseInput::Button(MouseButton::Forward),
+            "double_left" | "left_double" | "dbl_left" => {
+                MouseInput::DoubleClick(MouseButton::Left)
+            }
+            "double_right" | "right_double" | "dbl_right" => {
+                MouseInput::DoubleClick(MouseButton::Right)
+            }
+            "double_middle" | "middle_double" | "dbl_middle" => {
+                MouseInput::DoubleClick(MouseButton::Middle)
+            }
+            "double_back" | "back_double" | "dbl_back" => {
+                MouseInput::DoubleClick(MouseButton::Back)
+            }
+            "double_forward" | "forward_double" | "dbl_forward" => {
+                MouseInput::DoubleClick(MouseButton::Forward)
+            }
             "wheel_up" | "wheelup" | "scroll_up" | "scrollup" => {
                 MouseInput::Wheel(WheelDirection::Up)
             }
@@ -408,12 +431,14 @@ struct RawMouseBindings {
     #[serde(default)]
     bindings: BTreeMap<String, Vec<String>>,
     wheel_threshold: Option<f32>,
+    double_click_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MouseBindings {
     pairs: Vec<(MouseInput, Action)>,
     threshold: f32,
+    double_click: Duration,
 }
 
 impl Default for MouseBindings {
@@ -424,8 +449,10 @@ impl Default for MouseBindings {
                 (MouseInput::Wheel(WheelDirection::Down), Action::Next),
                 (MouseInput::Button(MouseButton::Right), Action::Prev),
                 (MouseInput::Wheel(WheelDirection::Up), Action::Prev),
+                (MouseInput::DoubleClick(MouseButton::Left), Action::SavePage),
             ],
             threshold: DEFAULT_WHEEL_THRESHOLD,
+            double_click: Duration::from_millis(DEFAULT_DOUBLE_CLICK_MS),
         }
     }
 }
@@ -467,10 +494,24 @@ impl MouseBindings {
             }
             None => DEFAULT_WHEEL_THRESHOLD,
         };
-        Self::from_map(raw.bindings, threshold)
+        let double_click = match raw.double_click_ms {
+            Some(value) if value > 0 => Duration::from_millis(value),
+            Some(value) => {
+                eprintln!(
+                    "mangania: mouse.toml: invalid double_click_ms {value}; using {DEFAULT_DOUBLE_CLICK_MS}"
+                );
+                Duration::from_millis(DEFAULT_DOUBLE_CLICK_MS)
+            }
+            None => Duration::from_millis(DEFAULT_DOUBLE_CLICK_MS),
+        };
+        Self::from_map(raw.bindings, threshold, double_click)
     }
 
-    fn from_map(map: BTreeMap<String, Vec<String>>, threshold: f32) -> Self {
+    fn from_map(
+        map: BTreeMap<String, Vec<String>>,
+        threshold: f32,
+        double_click: Duration,
+    ) -> Self {
         let defaults = Self::default();
         let mut canonical = canonical_actions(map, "mouse.toml");
         let mut pairs = Vec::new();
@@ -496,7 +537,11 @@ impl MouseBindings {
                 ),
             }
         }
-        Self { pairs, threshold }
+        Self {
+            pairs,
+            threshold,
+            double_click,
+        }
     }
 
     pub fn action_for(&self, input: MouseInput) -> Option<Action> {
@@ -508,6 +553,18 @@ impl MouseBindings {
 
     pub fn wheel_threshold(&self) -> f32 {
         self.threshold
+    }
+
+    pub fn double_click_interval(&self) -> Duration {
+        self.double_click
+    }
+
+    pub fn double_action(&self, button: MouseButton) -> Option<Action> {
+        self.action_for(MouseInput::DoubleClick(button))
+    }
+
+    pub fn single_action(&self, button: MouseButton) -> Option<Action> {
+        self.action_for(MouseInput::Button(button))
     }
 }
 

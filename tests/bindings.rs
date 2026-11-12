@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use mangania::bindings::{
     Action, DEFAULT_KEYBINDINGS, DEFAULT_MOUSE, KeyBindings, MouseBindings, MouseInput,
     WheelDirection,
@@ -165,7 +167,16 @@ fn default_mouse_bindings_work() {
         bindings.action_for(MouseInput::Wheel(WheelDirection::Up)),
         Some(Action::Prev)
     );
+    assert_eq!(
+        bindings.double_action(MouseButton::Left),
+        Some(Action::SavePage)
+    );
+    assert_eq!(
+        bindings.single_action(MouseButton::Left),
+        Some(Action::Next)
+    );
     assert_eq!(bindings.wheel_threshold(), 50.0);
+    assert_eq!(bindings.double_click_interval(), Duration::from_millis(400));
 }
 
 #[test]
@@ -173,14 +184,17 @@ fn custom_mouse_bindings_replace_defaults() {
     let bindings = MouseBindings::parse(
         r#"
 wheel_threshold = 25.5
+double_click_ms = 250
 
 [bindings]
 next = ["middle", "wheel_up"]
 prev = []
+save_page = ["double_left", "double_middle"]
 "#,
     );
 
     assert_eq!(bindings.wheel_threshold(), 25.5);
+    assert_eq!(bindings.double_click_interval(), Duration::from_millis(250));
     assert_eq!(
         bindings.action_for(MouseInput::Button(MouseButton::Middle)),
         Some(Action::Next)
@@ -197,10 +211,19 @@ prev = []
         bindings.action_for(MouseInput::Button(MouseButton::Right)),
         None
     );
+    assert_eq!(
+        bindings.action_for(MouseInput::DoubleClick(MouseButton::Left)),
+        Some(Action::SavePage)
+    );
+    assert_eq!(
+        bindings.action_for(MouseInput::DoubleClick(MouseButton::Middle)),
+        Some(Action::SavePage)
+    );
 }
 
 #[test]
-fn invalid_wheel_threshold_uses_default() {
-    let bindings = MouseBindings::parse("wheel_threshold = 0\n");
+fn invalid_mouse_options_use_defaults() {
+    let bindings = MouseBindings::parse("wheel_threshold = 0\ndouble_click_ms = 0\n");
     assert_eq!(bindings.wheel_threshold(), 50.0);
+    assert_eq!(bindings.double_click_interval(), Duration::from_millis(400));
 }

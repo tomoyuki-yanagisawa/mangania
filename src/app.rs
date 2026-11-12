@@ -2,10 +2,11 @@ use std::error::Error;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Instant;
 
 use winit::application::ApplicationHandler;
-use winit::dpi::LogicalSize;
-use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
+use winit::dpi::{LogicalSize, PhysicalPosition};
+use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, ModifiersState};
 use winit::window::{Fullscreen, Window, WindowId};
@@ -22,12 +23,21 @@ use crate::prefetch::Prefetch;
 use crate::view;
 use crate::viewer::Viewer;
 
+const DOUBLE_CLICK_DISTANCE: f64 = 10.0;
+
 pub fn run(path: Option<PathBuf>, prefetch_depth: usize) -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let proxy = event_loop.create_proxy();
     event_loop.run_app(&mut App::new(path, prefetch_depth, proxy))?;
     Ok(())
+}
+
+struct PendingClick {
+    button: MouseButton,
+    action: Option<Action>,
+    position: PhysicalPosition<f64>,
+    deadline: Instant,
 }
 
 struct App {
@@ -41,6 +51,8 @@ struct App {
     scroll: f32,
     last_frame: Vec<u32>,
     modifiers: ModifiersState,
+    cursor: PhysicalPosition<f64>,
+    pending_click: Option<PendingClick>,
     config: Config,
     keys: KeyBindings,
     mouse: MouseBindings,
@@ -66,6 +78,8 @@ impl App {
             scroll: 0.0,
             last_frame: Vec::new(),
             modifiers: ModifiersState::empty(),
+            cursor: PhysicalPosition::new(0.0, 0.0),
+            pending_click: None,
             config,
             keys,
             mouse,
@@ -161,7 +175,61 @@ impl App {
         self.refresh();
     }
 
+    fn handle_click(&mut self, button: MouseButton, event_loop: &ActiveEventLoop) {
+        let double = self.mouse.double_action(button);
+        if double.is_none() {
+            self.flush_pending_click(event_loop);
+            if let Some(action) = self.mouse.single_action(button) {
+                self.perform(action, event_loop);
+            }
+            self.update_click_timer(event_loop);
+            return;
+        }
+
+        let now = Instant::now();
+        let interval = self.mouse.double_click_interval();
+        if let Some(pending) = self.pending_click.take() {
+            let is_double = is_double_click(&pending, button, self.cursor, now);
+            if is_double {
+                if let Some(action) = double {
+                    self.perform(action, event_loop);
+                }
+                self.update_click_timer(event_loop);
+                return;
+            }
+            if let Some(action) = pending.action {
+                self.perform(action, event_loop);
+            }
+        }
+
+        self.pending_click = Some(PendingClick {
+            button,
+            action: self.mouse.single_action(button),
+            position: self.cursor,
+            deadline: now + interval,
+        });
+        self.update_click_timer(event_loop);
+    }
+
+    fn flush_pending_click(&mut self, event_loop: &ActiveEventLoop) {
+        if let Some(pending) = self.pending_click.take()
+            && let Some(action) = pending.action
+        {
+            self.perform(action, event_loop);
+        }
+    }
+
+    fn update_click_timer(&self, event_loop: &ActiveEventLoop) {
+        let control_flow = match &self.pending_click {
+            Some(pending) => ControlFlow::WaitUntil(pending.deadline),
+            None => ControlFlow::Wait,
+        };
+        event_loop.set_control_flow(control_flow);
+    }
+
     fn handle_scroll(&mut self, delta: MouseScrollDelta, event_loop: &ActiveEventLoop) {
+        self.flush_pending_click(event_loop);
+        self.update_click_timer(event_loop);
         if self.viewer.is_none() {
             return;
         }
@@ -430,6 +498,23 @@ impl App {
     }
 }
 
+fn is_double_click(
+    pending: &PendingClick,
+    button: MouseButton,
+    position: PhysicalPosition<f64>,
+    now: Instant,
+) -> bool {
+    pending.button == button
+        && now <= pending.deadline
+        && click_distance(pending.position, position) <= DOUBLE_CLICK_DISTANCE
+}
+
+fn click_distance(a: PhysicalPosition<f64>, b: PhysicalPosition<f64>) -> f64 {
+    let dx = a.x - b.x;
+    let dy = a.y - b.y;
+    (dx * dx + dy * dy).sqrt()
+}
+
 impl ApplicationHandler<UserEvent> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
@@ -487,6 +572,17 @@ impl ApplicationHandler<UserEvent> for App {
         }
     }
 
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if self
+            .pending_click
+            .as_ref()
+            .is_some_and(|pending| Instant::now() >= pending.deadline)
+        {
+            self.flush_pending_click(event_loop);
+        }
+        self.update_click_timer(event_loop);
+    }
+
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -508,18 +604,59 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::ModifiersChanged(modifiers) => {
                 self.modifiers = modifiers.state();
             }
+            WindowEvent::CursorMoved { position, .. } => {
+                self.cursor = position;
+            }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
                 button,
                 ..
-            } => {
-                if let Some(action) = self.mouse.action_for(MouseInput::Button(button)) {
-                    self.perform(action, event_loop);
-                }
-            }
+            } => self.handle_click(button, event_loop),
             WindowEvent::MouseWheel { delta, .. } => self.handle_scroll(delta, event_loop),
             WindowEvent::RedrawRequested => self.draw(),
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn detects_double_click_by_button_time_and_distance() {
+        let now = Instant::now();
+        let pending = PendingClick {
+            button: MouseButton::Left,
+            action: Some(Action::Next),
+            position: PhysicalPosition::new(10.0, 10.0),
+            deadline: now + Duration::from_millis(400),
+        };
+
+        assert!(is_double_click(
+            &pending,
+            MouseButton::Left,
+            PhysicalPosition::new(14.0, 14.0),
+            now + Duration::from_millis(200)
+        ));
+        assert!(!is_double_click(
+            &pending,
+            MouseButton::Right,
+            PhysicalPosition::new(10.0, 10.0),
+            now + Duration::from_millis(200)
+        ));
+        assert!(!is_double_click(
+            &pending,
+            MouseButton::Left,
+            PhysicalPosition::new(10.0, 10.0),
+            now + Duration::from_millis(401)
+        ));
+        assert!(!is_double_click(
+            &pending,
+            MouseButton::Left,
+            PhysicalPosition::new(30.0, 10.0),
+            now + Duration::from_millis(200)
+        ));
     }
 }
