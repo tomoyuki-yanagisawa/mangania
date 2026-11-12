@@ -5,12 +5,13 @@ use std::sync::Arc;
 
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
-use winit::keyboard::{Key, ModifiersState, NamedKey};
+use winit::keyboard::{Key, ModifiersState};
 use winit::window::{Fullscreen, Window, WindowId};
 
 use crate::archive::Archive;
+use crate::bindings::{Action, KeyBindings, MouseBindings, MouseInput, WheelDirection};
 use crate::config::Config;
 use crate::event::UserEvent;
 use crate::export;
@@ -41,6 +42,8 @@ struct App {
     last_frame: Vec<u32>,
     modifiers: ModifiersState,
     config: Config,
+    keys: KeyBindings,
+    mouse: MouseBindings,
     status: Option<String>,
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     menu: Option<MenuBar>,
@@ -50,6 +53,8 @@ struct App {
 impl App {
     fn new(initial_path: Option<PathBuf>, depth: usize, proxy: EventLoopProxy<UserEvent>) -> Self {
         let config = Config::load();
+        let keys = KeyBindings::load();
+        let mouse = MouseBindings::load();
         Self {
             initial_path,
             depth,
@@ -62,6 +67,8 @@ impl App {
             last_frame: Vec::new(),
             modifiers: ModifiersState::empty(),
             config,
+            keys,
+            mouse,
             status: None,
             #[cfg(any(target_os = "windows", target_os = "macos"))]
             menu: None,
@@ -154,7 +161,7 @@ impl App {
         self.refresh();
     }
 
-    fn handle_scroll(&mut self, delta: MouseScrollDelta) {
+    fn handle_scroll(&mut self, delta: MouseScrollDelta, event_loop: &ActiveEventLoop) {
         if self.viewer.is_none() {
             return;
         }
@@ -162,40 +169,50 @@ impl App {
             MouseScrollDelta::LineDelta(_, y) => y * 50.0,
             MouseScrollDelta::PixelDelta(position) => position.y as f32,
         };
-        if self.scroll <= -50.0 {
-            self.navigate(1);
-        } else if self.scroll >= 50.0 {
-            self.navigate(-1);
+        let threshold = self.mouse.wheel_threshold();
+        let direction = if self.scroll <= -threshold {
+            Some(WheelDirection::Down)
+        } else if self.scroll >= threshold {
+            Some(WheelDirection::Up)
+        } else {
+            None
+        };
+        let Some(direction) = direction else {
+            return;
+        };
+        self.scroll = 0.0;
+        if let Some(action) = self.mouse.action_for(MouseInput::Wheel(direction)) {
+            self.perform(action, event_loop);
         }
     }
 
     fn handle_key(&mut self, key: Key, event_loop: &ActiveEventLoop) {
-        match key {
-            Key::Named(NamedKey::ArrowRight) => self.navigate(1),
-            Key::Named(NamedKey::ArrowLeft) => self.navigate(-1),
-            Key::Named(NamedKey::Home) => self.go_to(0),
-            Key::Named(NamedKey::End) => self.go_to(usize::MAX),
-            Key::Named(NamedKey::F11) => {
+        if let Some(action) = self.keys.action_for(&key, self.modifiers) {
+            self.perform(action, event_loop);
+        }
+    }
+
+    fn perform(&mut self, action: Action, event_loop: &ActiveEventLoop) {
+        match action {
+            Action::Next => self.navigate(1),
+            Action::Prev => self.navigate(-1),
+            Action::First => self.go_to(0),
+            Action::Last => self.go_to(usize::MAX),
+            Action::ToggleSpread => self.set_spread(!self.spread),
+            Action::SinglePage => self.set_spread(false),
+            Action::SpreadPage => self.set_spread(true),
+            Action::ToggleFullscreen => {
                 let fullscreen = self.is_fullscreen();
                 self.set_fullscreen(!fullscreen);
             }
-            Key::Character(key) if key.as_str().eq_ignore_ascii_case("v") => {
-                self.set_spread(!self.spread);
-            }
-            Key::Character(key)
-                if key.as_str().eq_ignore_ascii_case("s")
-                    && (self.modifiers.control_key() || self.modifiers.super_key()) =>
-            {
-                self.save_current_page();
-            }
-            Key::Named(NamedKey::Escape) => {
+            Action::SavePage => self.save_current_page(),
+            Action::Quit => {
                 if self.is_fullscreen() {
                     self.set_fullscreen(false);
                 } else {
                     event_loop.exit();
                 }
             }
-            _ => {}
         }
     }
 
@@ -384,36 +401,31 @@ impl App {
     }
 
     #[cfg(any(target_os = "windows", target_os = "macos"))]
-    fn handle_menu(&mut self, event: muda::MenuEvent) {
+    fn handle_menu(&mut self, event: muda::MenuEvent, event_loop: &ActiveEventLoop) {
         let Some(menu) = &self.menu else {
             return;
         };
-        let next = event.id == menu.next.id();
-        let prev = event.id == menu.prev.id();
-        let first = event.id == menu.first.id();
-        let last = event.id == menu.last.id();
-        let save = event.id == menu.save.id();
-        let single = event.id == menu.single.id();
-        let spread = event.id == menu.spread.id();
-        let fullscreen = event.id == menu.fullscreen.id();
-
-        if save {
-            self.save_current_page();
-        } else if next {
-            self.navigate(1);
-        } else if prev {
-            self.navigate(-1);
-        } else if first {
-            self.go_to(0);
-        } else if last {
-            self.go_to(usize::MAX);
-        } else if single {
-            self.set_spread(false);
-        } else if spread {
-            self.set_spread(true);
-        } else if fullscreen {
-            let next = !self.is_fullscreen();
-            self.set_fullscreen(next);
+        let action = if event.id == menu.save.id() {
+            Some(Action::SavePage)
+        } else if event.id == menu.next.id() {
+            Some(Action::Next)
+        } else if event.id == menu.prev.id() {
+            Some(Action::Prev)
+        } else if event.id == menu.first.id() {
+            Some(Action::First)
+        } else if event.id == menu.last.id() {
+            Some(Action::Last)
+        } else if event.id == menu.single.id() {
+            Some(Action::SinglePage)
+        } else if event.id == menu.spread.id() {
+            Some(Action::SpreadPage)
+        } else if event.id == menu.fullscreen.id() {
+            Some(Action::ToggleFullscreen)
+        } else {
+            None
+        };
+        if let Some(action) = action {
+            self.perform(action, event_loop);
         }
     }
 }
@@ -471,7 +483,7 @@ impl ApplicationHandler<UserEvent> for App {
         match event {
             UserEvent::ImageReady => self.handle_images_ready(),
             #[cfg(any(target_os = "windows", target_os = "macos"))]
-            UserEvent::Menu(event) => self.handle_menu(event),
+            UserEvent::Menu(event) => self.handle_menu(event, _event_loop),
         }
     }
 
@@ -500,12 +512,12 @@ impl ApplicationHandler<UserEvent> for App {
                 state: ElementState::Pressed,
                 button,
                 ..
-            } => match button {
-                MouseButton::Left => self.navigate(1),
-                MouseButton::Right => self.navigate(-1),
-                _ => {}
-            },
-            WindowEvent::MouseWheel { delta, .. } => self.handle_scroll(delta),
+            } => {
+                if let Some(action) = self.mouse.action_for(MouseInput::Button(button)) {
+                    self.perform(action, event_loop);
+                }
+            }
+            WindowEvent::MouseWheel { delta, .. } => self.handle_scroll(delta, event_loop),
             WindowEvent::RedrawRequested => self.draw(),
             _ => {}
         }
