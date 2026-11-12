@@ -51,15 +51,13 @@ pub fn render_spread(
     }
 
     let scale = (width as f64 / total_width as f64).min(height as f64 / max_height as f64);
-    let draw_width = ((total_width as f64 * scale).round() as u32).max(1);
-    let draw_height = ((max_height as f64 * scale).round() as u32).max(1);
+    let (draw_width, draw_height) = scaled(total_width, max_height, scale);
     let start_x = (width as isize - draw_width as isize) / 2;
     let start_y = (height as isize - draw_height as isize) / 2;
 
     let mut x = start_x;
     for image in [left, right].into_iter().flatten() {
-        let target_width = ((image.width() as f64 * scale).round() as u32).max(1);
-        let target_height = ((image.height() as f64 * scale).round() as u32).max(1);
+        let (target_width, target_height) = scaled(image.width(), image.height(), scale);
         let y = start_y + (draw_height as isize - target_height as isize) / 2;
         blit_scaled(
             buffer,
@@ -76,9 +74,13 @@ pub fn render_spread(
 fn fit(image: &RgbaImage, width: usize, height: usize) -> (u32, u32) {
     let (image_width, image_height) = image.dimensions();
     let scale = (width as f64 / image_width as f64).min(height as f64 / image_height as f64);
+    scaled(image_width, image_height, scale)
+}
+
+fn scaled(width: u32, height: u32, scale: f64) -> (u32, u32) {
     (
-        ((image_width as f64 * scale).round() as u32).max(1),
-        ((image_height as f64 * scale).round() as u32).max(1),
+        ((width as f64 * scale).round() as u32).max(1),
+        ((height as f64 * scale).round() as u32).max(1),
     )
 }
 

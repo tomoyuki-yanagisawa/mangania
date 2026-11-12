@@ -1,6 +1,8 @@
-use std::io::Write;
+use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+
+use image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -28,4 +30,15 @@ pub fn cleanup(path: &Path) {
     if let Some(parent) = path.parent() {
         let _ = std::fs::remove_dir_all(parent);
     }
+}
+
+// Not every test binary that includes this module needs an image fixture.
+#[allow(dead_code)]
+pub fn png() -> Vec<u8> {
+    let image = RgbaImage::from_pixel(4, 3, Rgba([10, 20, 30, 255]));
+    let mut bytes = Vec::new();
+    DynamicImage::ImageRgba8(image)
+        .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png)
+        .unwrap();
+    bytes
 }

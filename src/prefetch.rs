@@ -18,8 +18,13 @@ struct Queue {
     closed: bool,
 }
 
+struct Shared {
+    queue: Mutex<Queue>,
+    ready: Condvar,
+}
+
 pub struct Prefetch {
-    queue: Arc<(Mutex<Queue>, Condvar)>,
+    shared: Arc<Shared>,
     results: Receiver<(usize, Result<Arc<RgbaImage>, String>)>,
     in_flight: HashSet<usize>,
 }
@@ -27,21 +32,20 @@ pub struct Prefetch {
 impl Prefetch {
     /// Takes ownership of the archive so ZIP reads and decodes never block the UI thread.
     pub fn start(archive: Archive, notify: impl Fn() -> bool + Send + 'static) -> Self {
-        let queue = Arc::new((
-            Mutex::new(Queue {
+        let shared = Arc::new(Shared {
+            queue: Mutex::new(Queue {
                 jobs: VecDeque::new(),
                 closed: false,
             }),
-            Condvar::new(),
-        ));
+            ready: Condvar::new(),
+        });
         let (sender, results) = mpsc::sync_channel(1);
-        let worker_queue = Arc::clone(&queue);
+        let worker_shared = Arc::clone(&shared);
         thread::spawn(move || {
             let mut archive = archive;
             loop {
                 let job = {
-                    let (lock, ready) = &*worker_queue;
-                    let mut queue = lock.lock().unwrap();
+                    let mut queue = worker_shared.queue.lock().unwrap();
                     loop {
                         if queue.closed {
                             return;
@@ -49,7 +53,7 @@ impl Prefetch {
                         if let Some(job) = queue.jobs.pop_front() {
                             break job;
                         }
-                        queue = ready.wait(queue).unwrap();
+                        queue = worker_shared.ready.wait(queue).unwrap();
                     }
                 };
 
@@ -67,7 +71,7 @@ impl Prefetch {
         });
 
         Self {
-            queue,
+            shared,
             results,
             in_flight: HashSet::new(),
         }
@@ -75,8 +79,7 @@ impl Prefetch {
 
     /// `urgent` jobs jump ahead of queued prefetches and discard obsolete ones.
     pub fn request(&mut self, page: usize, entry: usize, urgent: bool) {
-        let (lock, ready) = &*self.queue;
-        let mut queue = lock.lock().unwrap();
+        let mut queue = self.shared.queue.lock().unwrap();
         if queue.closed {
             return;
         }
@@ -98,7 +101,7 @@ impl Prefetch {
             queue.jobs.push_front(Job { page, entry });
         }
         drop(queue);
-        ready.notify_one();
+        self.shared.ready.notify_one();
     }
 
     pub fn poll(&mut self) -> Vec<(usize, Result<Arc<RgbaImage>, String>)> {
@@ -112,8 +115,7 @@ impl Prefetch {
 
     /// Drops queued jobs that have not started yet. Running jobs cannot be cancelled.
     pub fn clear_pending(&mut self) {
-        let (lock, _) = &*self.queue;
-        let mut queue = lock.lock().unwrap();
+        let mut queue = self.shared.queue.lock().unwrap();
         while let Some(job) = queue.jobs.pop_front() {
             self.in_flight.remove(&job.page);
         }
@@ -122,8 +124,7 @@ impl Prefetch {
 
 impl Drop for Prefetch {
     fn drop(&mut self) {
-        let (lock, ready) = &*self.queue;
-        lock.lock().unwrap().closed = true;
-        ready.notify_all();
+        self.shared.queue.lock().unwrap().closed = true;
+        self.shared.ready.notify_all();
     }
 }
