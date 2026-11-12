@@ -12,7 +12,7 @@ pub struct MenuBar {
     pub last: MenuItem,
     pub single: CheckMenuItem,
     pub spread: CheckMenuItem,
-    pub fullscreen: MenuItem,
+    pub fullscreen: CheckMenuItem,
     menu: Menu,
 }
 
@@ -46,7 +46,7 @@ impl MenuBar {
         let _ = view.append(&single);
         let _ = view.append(&spread_item);
         let _ = view.append(&PredefinedMenuItem::separator());
-        let fullscreen = MenuItem::new("全画面表示", true, None);
+        let fullscreen = CheckMenuItem::new("全画面表示", true, false, None);
         let _ = view.append(&fullscreen);
         let _ = menu.append(&view);
 
