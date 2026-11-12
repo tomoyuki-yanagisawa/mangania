@@ -281,21 +281,7 @@ impl Default for KeyBindings {
 
 impl KeyBindings {
     pub fn load() -> Self {
-        let Some(path) = config::config_path(KEYBINDINGS_FILE) else {
-            return Self::default();
-        };
-        ensure_default_file(&path, DEFAULT_KEYBINDINGS);
-        Self::load_from(&path)
-    }
-
-    pub fn load_from(path: &Path) -> Self {
-        match std::fs::read_to_string(path) {
-            Ok(text) => Self::parse(&text),
-            Err(error) => {
-                eprintln!("mangania: read {}: {error}", path.display());
-                Self::default()
-            }
-        }
+        load_bindings(KEYBINDINGS_FILE, DEFAULT_KEYBINDINGS, Self::parse)
     }
 
     pub fn parse(text: &str) -> Self {
@@ -401,21 +387,7 @@ impl Default for MouseBindings {
 
 impl MouseBindings {
     pub fn load() -> Self {
-        let Some(path) = config::config_path(MOUSE_FILE) else {
-            return Self::default();
-        };
-        ensure_default_file(&path, DEFAULT_MOUSE);
-        Self::load_from(&path)
-    }
-
-    pub fn load_from(path: &Path) -> Self {
-        match std::fs::read_to_string(path) {
-            Ok(text) => Self::parse(&text),
-            Err(error) => {
-                eprintln!("mangania: read {}: {error}", path.display());
-                Self::default()
-            }
-        }
+        load_bindings(MOUSE_FILE, DEFAULT_MOUSE, Self::parse)
     }
 
     pub fn parse(text: &str) -> Self {
@@ -539,6 +511,20 @@ fn canonical_actions(
         }
     }
     canonical
+}
+
+fn load_bindings<T: Default>(file: &str, default_text: &str, parse: impl Fn(&str) -> T) -> T {
+    let Some(path) = config::config_path(file) else {
+        return T::default();
+    };
+    ensure_default_file(&path, default_text);
+    match std::fs::read_to_string(&path) {
+        Ok(text) => parse(&text),
+        Err(error) => {
+            eprintln!("mangania: read {}: {error}", path.display());
+            T::default()
+        }
+    }
 }
 
 fn ensure_default_file(path: &Path, contents: &str) {
