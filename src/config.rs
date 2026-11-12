@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_EXPORT_NAME: &str = "{book}_{page:03}";
 
+const CONFIG_FILE: &str = "config.toml";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -26,7 +28,7 @@ impl Default for Config {
 
 impl Config {
     pub fn load() -> Self {
-        config_path()
+        config_path(CONFIG_FILE)
             .map(|path| Self::load_from(&path))
             .unwrap_or_default()
     }
@@ -38,7 +40,7 @@ impl Config {
     }
 
     pub fn save(&self) {
-        let Some(path) = config_path() else {
+        let Some(path) = config_path(CONFIG_FILE) else {
             return;
         };
         if let Err(error) = self.save_to(&path) {
@@ -83,6 +85,6 @@ fn expand_tilde(path: &Path) -> PathBuf {
     path.to_path_buf()
 }
 
-fn config_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|base| base.join("mangania").join("config.toml"))
+pub(crate) fn config_path(name: &str) -> Option<PathBuf> {
+    dirs::config_dir().map(|base| base.join("mangania").join(name))
 }

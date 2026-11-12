@@ -34,10 +34,10 @@ cargo run --release -- --render-page 1 out.png path/to/book.zip
 | 先頭 / 末尾 | Home / End |
 | 1ページ / 見開きの切替 | メニューの「表示」、または V（Linux 用フォールバック） |
 | 全画面の切替 | メニューの「表示」>「全画面表示」、または F11 |
-| 表示中のページを保存 | メニューの「ファイル」>「表示中のページを保存」、または Ctrl+S / Cmd+S |
+| 表示中のページを保存 | メニューの「ファイル」>「表示中のページを保存」、Ctrl+S / Cmd+S、または左ダブルクリック |
 | 終了 | Esc（全画面中は全画面解除。ウィンドウ表示中は終了） |
 
-マウスはウィンドウ内の任意の位置で操作できます。ホイールはトラックパッドの小さなスクロールを約50px分ためて1ページ送りにします。見開き時はクリック・ホイールとも2ページ単位です。
+マウスはウィンドウ内の任意の位置で操作できます。ホイールはトラックパッドの小さなスクロールを既定で約50px分ためて1ページ送りにします（`mouse.toml` で変更可能）。見開き時はクリック・ホイールとも2ページ単位です。キーとマウスの割り当ては設定ファイルで変更できます。左ダブルクリックに保存を割り当てているため、左シングルクリック（次のページ）はダブルクリック判定のため約400ms待ってから実行されます。
 
 メニューからも同じ操作ができます。
 
@@ -59,7 +59,7 @@ cargo run --release -- --render-page 1 out.png path/to/book.zip
 
 ## 表示中のページを保存
 
-「ファイル」>「表示中のページを保存」、または `Ctrl+S` / `Cmd+S` で、現在表示しているページを画像ファイルとして書き出します。
+「ファイル」>「表示中のページを保存」、`Ctrl+S` / `Cmd+S`、または左ダブルクリックで、現在表示しているページを画像ファイルとして書き出します。
 
 - 見開き表示中でも **現在ページのみ** を保存します。
 - ZIP 内の元画像バイト列をそのまま書き出すため、再エンコードによる画質劣化はありません。
@@ -98,6 +98,65 @@ export_name = "{book}_{page:03}"
 
 未知のプレースホルダーはそのまま残ります。ファイル名に使えない文字やパス区切りは `_` に置換します。
 
+## キーバインドとマウス設定
+
+キー割り当てとマウス操作は `config.toml` とは別のファイルで設定します。初回起動時に既定値のファイルが作成されます。場所は `config.toml` と同じディレクトリです。
+
+### keybindings.toml
+
+```toml
+[keys]
+next = ["Right"]
+prev = ["Left"]
+first = ["Home"]
+last = ["End"]
+toggle_spread = ["v"]
+single_page = []
+spread_page = []
+toggle_fullscreen = ["F11"]
+save_page = ["Ctrl+S", "Cmd+S"]
+quit = ["Escape"]
+```
+
+| アクション | 内容 |
+| --- | --- |
+| `next` | 次のページ |
+| `prev` | 前のページ |
+| `first` | 先頭へ |
+| `last` | 末尾へ |
+| `toggle_spread` | 1ページ / 見開きの切替 |
+| `single_page` | 1ページ表示にする |
+| `spread_page` | 見開き表示にする |
+| `toggle_fullscreen` | 全画面の切替 |
+| `save_page` | 表示中のページを保存 |
+| `quit` | 終了（全画面中は全画面解除） |
+
+- キーは `修飾キー+キー` で指定します。修飾キーは `Ctrl`、`Shift`、`Alt`、`Super`（macOS の Cmd）です。
+- 名前付きキーは `Right`、`Left`、`Up`、`Down`、`Home`、`End`、`PageUp`、`PageDown`、`Escape`、`Space`、`Enter`、`Tab`、`Backspace`、`Delete`、`Insert`、`F1`〜`F35` などです。
+- 1文字キーはそのまま書きます（`v`、`s`、`1`）。`+` は `plus`、または `Ctrl++` のように書けます。
+- 1つのアクションに複数のキーを割り当てられます。`[]` にするとそのアクションを無効化できます。
+- 修飾キーは完全一致です（`s` と `Shift+s` は別の割り当て）。
+- ファイルに書かなかったアクションは既定値を使います。書いたアクションは既定値を置き換えます。
+
+### mouse.toml
+
+```toml
+wheel_threshold = 50.0
+double_click_ms = 400
+
+[bindings]
+next = ["left", "wheel_down"]
+prev = ["right", "wheel_up"]
+save_page = ["double_left"]
+```
+
+- ボタンは `left`、`right`、`middle`、`back`、`forward`、ホイールは `wheel_up`、`wheel_down` です。
+- ダブルクリックは `double_left`、`double_right`、`double_middle`、`double_back`、`double_forward` です。
+- `wheel_threshold` は1ページ送りに必要なスクロール量です（既定 `50.0`）。
+- `double_click_ms` はダブルクリックと判定する時間です（既定 `400`）。
+- ダブルクリックが割り当てられたボタンでは、シングルクリックの動作を `double_click_ms` の間待ってから実行します。これにより、ダブルクリック時にシングルクリックの動作（ページ送りなど）が先に実行されません。
+- アクション名は `keybindings.toml` と同じです。1つのアクションに複数指定でき、`[]` で無効化できます。
+
 ## 全画面
 
 - メニューの「表示」>「全画面表示」、または `F11` で切り替えます。
@@ -127,6 +186,8 @@ JPEG 2000 は対象外です。
 - 全画面表示（F11 / メニュー）
 - 「移動」「表示」メニューからナビゲーションと表示モードを操作
 - 左右クリックとホイールでページ送り
+- キーとマウスの割り当てを別々の TOML ファイルで設定
+- ダブルクリックを時間と位置で判定し、競合するシングルクリック動作だけを遅延
 - UI は `winit` + `softbuffer`（D&D と CPU 描画のため）
 
 ## Windows 7 向けビルド
@@ -157,6 +218,7 @@ src/
 ├── event.rs     # winit/menu のユーザーイベント
 ├── cli.rs       # 引数解析
 ├── config.rs    # TOML設定（見開き・保存設定の永続化）
+├── bindings.rs  # キー・マウス割り当てのTOML設定
 ├── export.rs    # 表示中ページの保存、ファイル名テンプレート
 ├── headless.rs  # GUIなしの list / check / render-page
 ├── archive.rs   # ZIP 索引・自然順・読み出し
@@ -168,6 +230,7 @@ src/
 tests/
 ├── common/mod.rs
 ├── archive.rs
+├── bindings.rs
 ├── cache.rs
 ├── cli.rs
 ├── decoder.rs
@@ -186,13 +249,13 @@ cargo test
 cargo clippy --all-targets
 ```
 
-自然順ソート、パス除外、PNG/JPEGデコード、1ページ/見開き描画、CLI引数、ヘッドレス `--check` / `--render-page`、キャッシュの枚数/バイト上限、ナビゲーション境界、winit非依存のPrefetch、設定のTOML読み書き、ファイル名テンプレート展開・サニタイズ・元画像バイト列の保存をテストしています。GUI操作は手動確認です。
+自然順ソート、パス除外、PNG/JPEGデコード、1ページ/見開き描画、CLI引数、ヘッドレス `--check` / `--render-page`、キャッシュの枚数/バイト上限、ナビゲーション境界、winit非依存のPrefetch、設定のTOML読み書き、ファイル名テンプレート展開・サニタイズ・元画像バイト列の保存、キー・マウス割り当ての解析と一致判定をテストしています。GUI操作は手動確認です。
 
 ## 設計書との主な差分
 
 - UI は libui-ng ではなく `winit` + `softbuffer`（D&D 必須のため）
 - ZIP は libarchive ではなく `zip` crate
 - JPEG 2000 は対象外。設定画面、ディスクキャッシュ、閲覧位置保存は未実装
-- 設定はメニューバーの表示モード・全画面切替のみ。読み方向は右→左固定
+- 設定画面は未実装。表示・保存・キー・マウス設定はTOMLファイルで行う。読み方向は右→左固定
 - macOS でのみ実行確認済み。Windows / Linux はコンパイル確認まで
 - Windows 7 はビルド手順とコードのみ（実機未検証）
