@@ -34,12 +34,14 @@ cargo run --release -- --render-page 1 out.png path/to/book.zip
 | 先頭 / 末尾 | Home / End |
 | 1ページ / 見開きの切替 | メニューの「表示」、または V（Linux 用フォールバック） |
 | 全画面の切替 | メニューの「表示」>「全画面表示」、または F11 |
+| 表示中のページを保存 | メニューの「ファイル」>「表示中のページを保存」、または Ctrl+S / Cmd+S |
 | 終了 | Esc（全画面中は全画面解除。ウィンドウ表示中は終了） |
 
 マウスはウィンドウ内の任意の位置で操作できます。ホイールはトラックパッドの小さなスクロールを約50px分ためて1ページ送りにします。見開き時はクリック・ホイールとも2ページ単位です。
 
 メニューからも同じ操作ができます。
 
+- **ファイル**: 表示中のページを保存
 - **移動**: 次のページ / 前のページ / 先頭へ / 末尾へ
 - **表示**: 1ページ表示 / 見開き表示 / 全画面表示
 
@@ -55,9 +57,19 @@ cargo run --release -- --render-page 1 out.png path/to/book.zip
 
 ウィンドウサイズに合わせて画像をフィットして中央に表示します。
 
+## 表示中のページを保存
+
+「ファイル」>「表示中のページを保存」、または `Ctrl+S` / `Cmd+S` で、現在表示しているページを画像ファイルとして書き出します。
+
+- 見開き表示中でも **現在ページのみ** を保存します。
+- ZIP 内の元画像バイト列をそのまま書き出すため、再エンコードによる画質劣化はありません。
+- 拡張子は元画像のものを引き継ぎます。
+- 出力先がなければ作成し、同名ファイルは上書きします。
+- 保存結果はタイトルバーに表示されます。
+
 ## 設定ファイル
 
-表示モードはTOMLで保存されます。
+表示モードと保存設定はTOMLで保存されます。
 
 - macOS: `~/Library/Application Support/mangania/config.toml`
 - Windows: `%APPDATA%\mangania\config.toml`
@@ -65,9 +77,26 @@ cargo run --release -- --render-page 1 out.png path/to/book.zip
 
 ```toml
 spread = true
+export_dir = "~/Pictures/MangaNia"
+export_name = "{book}_{page:03}"
 ```
 
-`spread = true` が見開き表示、`false` が1ページ表示です。
+- `spread = true` が見開き表示、`false` が1ページ表示です。
+- `export_dir` は保存先ディレクトリです。`~` を展開します。省略時は `~/Pictures/MangaNia` です。
+- `export_name` は保存ファイル名のテンプレートです。省略時は `{book}_{page:03}` です。
+- 拡張子はテンプレートに含めず、元画像から自動で付きます。
+
+### ファイル名テンプレート
+
+| プレースホルダー | 内容 | 例 |
+| --- | --- | --- |
+| `{book}` | ZIP 名（拡張子なし） | `book` |
+| `{page}` | 1始まりのページ番号 | `7` |
+| `{page:03}` | 3桁ゼロ埋めのページ番号 | `007` |
+| `{page:000}` | `0` の数だけゼロ埋め | `007` |
+| `{name}` | ZIP 内の元画像名（拡張子なし） | `001` |
+
+未知のプレースホルダーはそのまま残ります。ファイル名に使えない文字やパス区切りは `_` に置換します。
 
 ## 全画面
 
@@ -127,7 +156,8 @@ src/
 ├── navigation.rs # ページ移動の純粋関数
 ├── event.rs     # winit/menu のユーザーイベント
 ├── cli.rs       # 引数解析
-├── config.rs    # TOML設定（見開きの永続化）
+├── config.rs    # TOML設定（見開き・保存設定の永続化）
+├── export.rs    # 表示中ページの保存、ファイル名テンプレート
 ├── headless.rs  # GUIなしの list / check / render-page
 ├── archive.rs   # ZIP 索引・自然順・読み出し
 ├── decoder.rs   # JPEG / PNG / WebP デコード
@@ -142,6 +172,7 @@ tests/
 ├── cli.rs
 ├── decoder.rs
 ├── config.rs
+├── export.rs
 ├── headless.rs
 ├── navigation.rs
 ├── prefetch.rs
@@ -155,7 +186,7 @@ cargo test
 cargo clippy --all-targets
 ```
 
-自然順ソート、パス除外、PNG/JPEGデコード、1ページ/見開き描画、CLI引数、ヘッドレス `--check` / `--render-page`、キャッシュの枚数/バイト上限、ナビゲーション境界、winit非依存のPrefetch、設定のTOML読み書きをテストしています。GUI操作は手動確認です。
+自然順ソート、パス除外、PNG/JPEGデコード、1ページ/見開き描画、CLI引数、ヘッドレス `--check` / `--render-page`、キャッシュの枚数/バイト上限、ナビゲーション境界、winit非依存のPrefetch、設定のTOML読み書き、ファイル名テンプレート展開・サニタイズ・元画像バイト列の保存をテストしています。GUI操作は手動確認です。
 
 ## 設計書との主な差分
 
