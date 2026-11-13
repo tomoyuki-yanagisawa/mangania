@@ -364,21 +364,10 @@ impl App {
             return;
         };
 
-        let (current, next, waiting_for_next) = match self.viewer.as_ref() {
-            Some(viewer) => {
-                let next = if self.spread {
-                    viewer.cache.get(viewer.current + 1)
-                } else {
-                    None
-                };
-                let waiting = self.spread
-                    && viewer.current + 1 < viewer.pages.len()
-                    && next.is_none()
-                    && !viewer.errors.contains_key(&(viewer.current + 1));
-                (viewer.cache.get(viewer.current), next, waiting)
-            }
-            None => (None, None, false),
-        };
+        let (current, next, waiting_for_next) =
+            self.viewer.as_ref().map_or((None, None, false), |viewer| {
+                viewer.visible_pages(self.spread)
+            });
 
         if current.is_none() || waiting_for_next {
             if self.last_frame.len() == buffer.len() {
