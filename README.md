@@ -173,6 +173,7 @@ save_page = ["double_left"]
 - JPEG（ベースライン / プログレッシブ）
 - PNG
 - WebP
+- BMP
 
 JPEG 2000 は対象外です。
 
@@ -230,7 +231,7 @@ src/
 ├── export.rs    # 表示中ページの保存、ファイル名テンプレート
 ├── headless.rs  # GUIなしの list / check / render-page
 ├── archive.rs   # ZIP 索引・自然順・読み出し
-├── decoder.rs   # JPEG / PNG / WebP デコード
+├── decoder.rs   # JPEG / PNG / WebP / BMP デコード
 ├── prefetch.rs  # ワーカースレッドと優先度付きジョブ（winit非依存）
 ├── menu.rs      # Windows / macOS のネイティブメニュー
 └── view.rs      # フィット・見開き配置・0RGB 描画
@@ -257,7 +258,7 @@ cargo test
 cargo clippy --all-targets
 ```
 
-自然順ソート、パス除外、PNG/JPEGデコード、1ページ/見開き描画、CLI引数、ヘッドレス `--check` / `--render-page`、キャッシュの枚数/バイト上限、ナビゲーション境界、winit非依存のPrefetch、設定のTOML読み書き、ファイル名テンプレート展開・サニタイズ・元画像バイト列の保存、キー・マウス割り当ての解析と一致判定、シングル/ダブルクリックの判定をテストしています。GUI操作は手動確認です。
+自然順ソート、パス除外、PNG/JPEG/BMPデコード、1ページ/見開き描画、CLI引数、ヘッドレス `--check` / `--render-page`、キャッシュの枚数/バイト上限、ナビゲーション境界、winit非依存のPrefetch、設定のTOML読み書き、ファイル名テンプレート展開・サニタイズ・元画像バイト列の保存、キー・マウス割り当ての解析と一致判定、シングル/ダブルクリックの判定をテストしています。GUI操作は手動確認です。
 
 ## ドキュメント
 

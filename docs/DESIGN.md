@@ -38,7 +38,7 @@ ZIP 内の漫画画像を高速に読むための、小さなネイティブビ�
 | `cache.rs` | ページ数・バイト予算付きのデコード済み画像キャッシュ |
 | `navigation.rs` | ページ移動の純粋関数 |
 | `archive.rs` | ZIP 索引、自然順、安全なエントリ読み出し |
-| `decoder.rs` | JPEG / PNG / WebP のデコード |
+| `decoder.rs` | JPEG / PNG / WebP / BMP のデコード |
 | `prefetch.rs` | ワーカースレッド、優先度付きジョブ、通知 |
 | `view.rs` | フィット・見開き配置・0RGB バッファへの描画 |
 | `config.rs` | 一般設定の TOML 読み書き |
