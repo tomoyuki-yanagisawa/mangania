@@ -5,6 +5,7 @@ pub mod cache;
 pub mod cli;
 pub(crate) mod click;
 pub mod config;
+pub(crate) mod debug_log;
 pub mod decoder;
 pub(crate) mod event;
 pub mod export;

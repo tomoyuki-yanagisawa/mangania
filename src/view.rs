@@ -1,5 +1,9 @@
+use std::time::Instant;
+
 use image::RgbaImage;
 use image::imageops::FilterType;
+
+use crate::debug_log;
 
 const BACKGROUND: u32 = 0x20_20_20;
 
@@ -39,6 +43,9 @@ pub fn render_pages(buffer: &mut [u32], width: usize, height: usize, pages: &[Op
         .max()
         .unwrap_or(0);
     if total_width == 0 || max_height == 0 {
+        debug_log::log(format_args!(
+            "view: empty page (width={total_width} height={max_height})"
+        ));
         return;
     }
 
@@ -83,7 +90,16 @@ fn blit_scaled(
         return;
     }
 
+    let start = Instant::now();
     let resized = image::imageops::resize(image, target.0, target.1, FilterType::Triangle);
+    debug_log::log(format_args!(
+        "view: resize {}x{} -> {}x{} in {:.1}ms",
+        image.width(),
+        image.height(),
+        target.0,
+        target.1,
+        start.elapsed().as_secs_f64() * 1000.0
+    ));
     blit(buffer, width, height, &resized, position.0, position.1);
 }
 

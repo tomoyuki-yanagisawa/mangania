@@ -18,6 +18,7 @@ pub struct Config {
     pub export_name: String,
     pub prefetch: usize,
     pub cache_mb: usize,
+    pub debug: bool,
 }
 
 impl Default for Config {
@@ -28,6 +29,7 @@ impl Default for Config {
             export_name: DEFAULT_EXPORT_NAME.to_string(),
             prefetch: DEFAULT_PREFETCH,
             cache_mb: DEFAULT_CACHE_MB,
+            debug: false,
         }
     }
 }
@@ -82,6 +84,7 @@ impl Config {
             "# export_name: {book}, {page}, {page:03}, {name} が使えます\n",
             "# prefetch: 先読み枚数\n",
             "# cache_mb: メモリキャッシュ上限（MiB）。0 は既定値\n",
+            "# debug: true で debug.log にログを出力\n",
             "\n",
         ));
         text.push_str(&toml::to_string(self).unwrap_or_default());

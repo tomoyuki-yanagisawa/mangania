@@ -94,6 +94,7 @@ export_dir = "~/Pictures/MangaNia"
 export_name = "{book}_{page:03}"
 prefetch = 2
 cache_mb = 128
+debug = false
 ```
 
 - `spread = true` が見開き表示、`false` が1ページ表示です。
@@ -101,6 +102,7 @@ cache_mb = 128
 - `export_name` は保存ファイル名のテンプレートです。省略時は `{book}_{page:03}` です。
 - `prefetch` は先読み枚数です。省略時は 2 です。`--prefetch` を指定した場合は CLI が優先されます。
 - `cache_mb` はメモリキャッシュの上限（MiB）です。省略時は 128、`0` も 128 として扱います。
+- `debug = true` にすると、`config.toml` と同じディレクトリの `debug.log` に読み込み・デコード・描画のログを出力します。通常は `false` のままにしてください。
 - キャッシュ枚数は `prefetch + 2` です。
 - 拡張子はテンプレートに含めず、元画像から自動で付きます。
 
