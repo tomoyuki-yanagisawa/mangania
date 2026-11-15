@@ -103,11 +103,48 @@ jobs:
             mangania-v${{ needs.version.outputs.version }}-*.tar.gz
           if-no-files-found: error
 
+  build-win7:
+    name: Build (windows7-x86_64)
+    needs: version
+    if: needs.version.outputs.should_release == 'true'
+    runs-on: windows-latest
+    env:
+      RUSTUP_TOOLCHAIN: nightly
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows7-x86_64
+
+      - name: Build
+        run: cargo build --release --locked -Z build-std --target x86_64-win7-windows-msvc
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item "target/x86_64-win7-windows-msvc/release/mangania.exe" dist/
+          Copy-Item "README.md" dist/
+          $archive = "mangania-v${{ needs.version.outputs.version }}-windows7-x86_64.zip"
+          Compress-Archive -Path "dist/*" -DestinationPath $archive
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mangania-windows7-x86_64
+          path: mangania-v${{ needs.version.outputs.version }}-windows7-x86_64.zip
+          if-no-files-found: error
+
   release:
     name: Publish release
     needs:
       - version
       - build
+      - build-win7
     if: needs.version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
