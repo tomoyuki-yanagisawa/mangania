@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use mangania::config::{Config, DEFAULT_CACHE_MB, DEFAULT_PREFETCH};
+use mangania::config::{Config, DEFAULT_CACHE_MB, DEFAULT_PREFETCH, ScaleFilter};
 
 #[test]
 fn parses_all_config_fields() {
@@ -10,13 +10,14 @@ fn parses_all_config_fields() {
     assert!(!Config::parse("").spread);
 
     let config = Config::parse(
-        "spread = true\nexport_dir = \"/tmp/mangania-out\"\nexport_name = \"{book}_{page:03}\"\nprefetch = 4\ncache_mb = 64\ndebug = true\n",
+        "spread = true\nexport_dir = \"/tmp/mangania-out\"\nexport_name = \"{book}_{page:03}\"\nprefetch = 4\ncache_mb = 64\nscale_filter = \"lanczos3\"\ndebug = true\n",
     );
     assert!(config.spread);
     assert_eq!(config.export_dir, Some(PathBuf::from("/tmp/mangania-out")));
     assert_eq!(config.export_name, "{book}_{page:03}");
     assert_eq!(config.prefetch, 4);
     assert_eq!(config.cache_mb, 64);
+    assert_eq!(config.scale_filter, ScaleFilter::Lanczos3);
     assert!(config.debug);
     assert_eq!(config.cache_bytes(), 64 * 1024 * 1024);
 }
@@ -34,6 +35,36 @@ fn uses_defaults_for_prefetch_and_cache() {
 
     let no_cache = Config::parse("cache_mb = 0\n");
     assert_eq!(no_cache.cache_bytes(), DEFAULT_CACHE_MB * 1024 * 1024);
+}
+
+#[test]
+fn uses_triangle_when_scale_filter_is_missing_or_invalid() {
+    assert_eq!(Config::default().scale_filter, ScaleFilter::Triangle);
+    assert_eq!(Config::parse("").scale_filter, ScaleFilter::Triangle);
+    assert_eq!(
+        Config::parse("scale_filter = \"bogus\"\n").scale_filter,
+        ScaleFilter::Triangle
+    );
+
+    let text = Config::default().to_toml();
+    assert!(text.contains("scale_filter = \"triangle\""));
+    assert!(text.contains("# scale_filter"));
+}
+
+#[test]
+fn parses_every_scale_filter() {
+    let filters = [
+        ("nearest", ScaleFilter::Nearest),
+        ("triangle", ScaleFilter::Triangle),
+        ("catmull_rom", ScaleFilter::CatmullRom),
+        ("gaussian", ScaleFilter::Gaussian),
+        ("lanczos3", ScaleFilter::Lanczos3),
+    ];
+    for (name, expected) in filters {
+        let config = Config::parse(&format!("scale_filter = \"{name}\"\n"));
+        assert_eq!(config.scale_filter, expected, "scale_filter = {name}");
+    }
+    assert_eq!(ScaleFilter::ALL.len(), filters.len());
 }
 
 #[test]
@@ -82,6 +113,7 @@ fn round_trips_config_file() {
         export_name: "{book}_{page:03}_{name}".to_string(),
         prefetch: 4,
         cache_mb: 64,
+        scale_filter: ScaleFilter::Gaussian,
         debug: true,
     };
 

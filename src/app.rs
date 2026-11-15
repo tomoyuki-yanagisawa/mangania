@@ -14,6 +14,8 @@ use winit::window::{Fullscreen, Window, WindowId};
 use crate::bindings::{Action, KeyBindings, MouseBindings, MouseInput, WheelDirection};
 use crate::click::ClickTracker;
 use crate::config::Config;
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+use crate::config::ScaleFilter;
 use crate::debug_log;
 use crate::event::UserEvent;
 use crate::export;
@@ -23,7 +25,7 @@ use crate::navigation;
 use crate::open::Entry;
 use crate::prefetch::Prefetch;
 use crate::view;
-use crate::viewer::Viewer;
+use crate::viewer::{Viewer, Viewport};
 
 pub fn run(path: Option<PathBuf>, prefetch: Option<usize>) -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
@@ -72,8 +74,12 @@ impl App {
             }
         }
         debug_log::log(format_args!(
-            "config: spread={} prefetch={} cache_mb={} debug={}",
-            config.spread, config.prefetch, config.cache_mb, config.debug
+            "config: spread={} prefetch={} cache_mb={} scale_filter={} debug={}",
+            config.spread,
+            config.prefetch,
+            config.cache_mb,
+            config.scale_filter.as_str(),
+            config.debug
         ));
         let depth = prefetch.unwrap_or(config.prefetch);
         debug_log::log(format_args!("prefetch depth: {depth}"));
@@ -140,6 +146,7 @@ impl App {
                     prefetch,
                     self.depth,
                     self.cache_bytes,
+                    self.viewport(),
                 ));
                 self.error = None;
                 self.status = None;
@@ -221,6 +228,17 @@ impl App {
                 viewer.align_spread();
             }
             viewer.prefetch.clear_pending();
+        }
+        self.refresh();
+    }
+
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    fn set_scale_filter(&mut self, filter: ScaleFilter) {
+        self.config.scale_filter = filter;
+        self.config.save();
+        self.sync_viewport();
+        if let Some(menu) = &self.menu {
+            menu.set_filter_checked(filter);
         }
         self.refresh();
     }
@@ -380,7 +398,7 @@ impl App {
             if let Some(message) = viewer.errors.get(&viewer.current) {
                 title.push_str(" - error: ");
                 title.extend(message.chars().take(120));
-            } else if !viewer.cache.contains(viewer.current) {
+            } else if !viewer.has_page(viewer.current) {
                 title.push_str(" - loading...");
             }
             if let Some(error) = &self.error {
@@ -405,6 +423,39 @@ impl App {
         if let Some(window) = &self.window {
             window.request_redraw();
         }
+    }
+
+    fn viewport(&self) -> Viewport {
+        let (width, height) = self
+            .window
+            .as_ref()
+            .map(|window| {
+                let size = window.inner_size();
+                (size.width, size.height)
+            })
+            .unwrap_or((0, 0));
+        Viewport::new(width, height, self.config.scale_filter)
+    }
+
+    /// Updates the viewer when the window size or filter changed. The resized
+    /// cache is cleared so pages are decoded again for the new target.
+    fn sync_viewport(&mut self) -> bool {
+        let Some(window) = self.window.as_ref() else {
+            return false;
+        };
+        let size = window.inner_size();
+        if size.width == 0 || size.height == 0 {
+            return false;
+        }
+        let filter = self.config.scale_filter;
+        let Some(viewer) = self.viewer.as_mut() else {
+            return false;
+        };
+        let changed = viewer.set_viewport(size.width, size.height, filter);
+        if changed {
+            self.last_frame.clear();
+        }
+        changed
     }
 
     fn refresh(&mut self) {
@@ -450,7 +501,7 @@ impl App {
         let cached = self
             .viewer
             .as_ref()
-            .is_some_and(|viewer| viewer.cache.contains(viewer.current));
+            .is_some_and(|viewer| viewer.has_page(viewer.current));
         debug_log::log(format_args!(
             "draw: {}x{} page={} current={} next={} waiting={} cached={}",
             width,
@@ -475,16 +526,26 @@ impl App {
         } else if let Some(current) = current {
             let start = std::time::Instant::now();
             let pages = if self.spread {
-                [next.as_deref(), Some(current.as_ref())]
+                [
+                    next.as_ref()
+                        .map(|(page, image, size)| (*page, image.as_ref(), *size)),
+                    Some((current.0, current.1.as_ref(), current.2)),
+                ]
             } else {
-                [None, Some(current.as_ref())]
+                [None, Some((current.0, current.1.as_ref(), current.2))]
             };
-            view::render_pages(
-                &mut buffer,
-                size.width as usize,
-                size.height as usize,
-                &pages,
-            );
+            let filter = self.config.scale_filter;
+            if let Some(viewer) = self.viewer.as_mut() {
+                view::render_pages_cached(
+                    &mut buffer,
+                    size.width as usize,
+                    size.height as usize,
+                    &pages,
+                    filter,
+                    current.0,
+                    &mut viewer.cache,
+                );
+            }
 
             self.last_frame.resize(buffer.len(), 0);
             self.last_frame.copy_from_slice(&buffer);
@@ -508,7 +569,6 @@ impl App {
             return;
         }
 
-        let spread = self.spread;
         for (page, result) in results {
             match result {
                 Ok(image) => {
@@ -519,7 +579,7 @@ impl App {
                         image.height(),
                         image.as_raw().len()
                     ));
-                    viewer.insert(page, image, spread);
+                    viewer.insert_decoded(page, image);
                 }
                 Err(message) => {
                     eprintln!("mangania: page {}: {message}", page + 1);
@@ -534,6 +594,14 @@ impl App {
 
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     fn handle_menu(&mut self, event: muda::MenuEvent, event_loop: &ActiveEventLoop) {
+        let filter = self
+            .menu
+            .as_ref()
+            .and_then(|menu| menu.filter_for(&event.id));
+        if let Some(filter) = filter {
+            self.set_scale_filter(filter);
+            return;
+        }
         let action = self
             .menu
             .as_ref()
@@ -577,7 +645,7 @@ impl ApplicationHandler<UserEvent> for App {
 
         #[cfg(any(target_os = "windows", target_os = "macos"))]
         if self.menu.is_none() {
-            let menu = MenuBar::new(self.spread, self.proxy.clone());
+            let menu = MenuBar::new(self.spread, self.config.scale_filter, self.proxy.clone());
             menu.attach(&window);
             self.menu = Some(menu);
         }
@@ -621,8 +689,9 @@ impl ApplicationHandler<UserEvent> for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
+                self.sync_viewport();
                 self.update_fullscreen_menu(self.is_fullscreen());
-                self.request_redraw();
+                self.refresh();
             }
             WindowEvent::DroppedFile(path) => {
                 self.open(&path);

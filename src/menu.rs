@@ -6,6 +6,7 @@ use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
 
 use crate::bindings::Action;
+use crate::config::ScaleFilter;
 use crate::event::UserEvent;
 
 pub struct MenuBar {
@@ -17,6 +18,7 @@ pub struct MenuBar {
     pub single: CheckMenuItem,
     pub spread: CheckMenuItem,
     pub fullscreen: CheckMenuItem,
+    filters: Vec<(ScaleFilter, CheckMenuItem)>,
     menu: Menu,
     /// Menu detached from the window by [`MenuBar::set_native_menu_visible`].
     /// `0` means the menu is currently attached (or was never attached).
@@ -25,7 +27,11 @@ pub struct MenuBar {
 }
 
 impl MenuBar {
-    pub fn new(spread: bool, proxy: EventLoopProxy<UserEvent>) -> Self {
+    pub fn new(
+        spread: bool,
+        current_filter: ScaleFilter,
+        proxy: EventLoopProxy<UserEvent>,
+    ) -> Self {
         let menu = Menu::new();
 
         let app = Submenu::new("MangaNia", true);
@@ -56,6 +62,20 @@ impl MenuBar {
         let _ = view.append(&PredefinedMenuItem::separator());
         let fullscreen = CheckMenuItem::new("全画面表示", true, false, None);
         let _ = view.append(&fullscreen);
+
+        let filter = Submenu::new("縮小フィルタ", true);
+        let mut filters = Vec::with_capacity(ScaleFilter::ALL.len());
+        for scale_filter in ScaleFilter::ALL {
+            let item = CheckMenuItem::new(
+                scale_filter.label(),
+                true,
+                scale_filter == current_filter,
+                None,
+            );
+            let _ = filter.append(&item);
+            filters.push((scale_filter, item));
+        }
+        let _ = view.append(&filter);
         let _ = menu.append(&view);
 
         muda::MenuEvent::set_event_handler(Some(move |event| {
@@ -71,6 +91,7 @@ impl MenuBar {
             single,
             spread: spread_item,
             fullscreen,
+            filters,
             menu,
             #[cfg(target_os = "windows")]
             saved_hmenu: Cell::new(0),
@@ -96,6 +117,19 @@ impl MenuBar {
             Some(Action::ToggleFullscreen)
         } else {
             None
+        }
+    }
+
+    pub fn filter_for(&self, id: &MenuId) -> Option<ScaleFilter> {
+        self.filters
+            .iter()
+            .find(|(_, item)| item.id() == id)
+            .map(|(filter, _)| *filter)
+    }
+
+    pub fn set_filter_checked(&self, current: ScaleFilter) {
+        for (filter, item) in &self.filters {
+            item.set_checked(*filter == current);
         }
     }
 
