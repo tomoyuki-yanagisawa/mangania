@@ -15,6 +15,7 @@ use crate::archive::Archive;
 use crate::bindings::{Action, KeyBindings, MouseBindings, MouseInput, WheelDirection};
 use crate::click::ClickTracker;
 use crate::config::Config;
+use crate::debug_log;
 use crate::event::UserEvent;
 use crate::export;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
@@ -61,7 +62,21 @@ impl App {
         proxy: EventLoopProxy<UserEvent>,
     ) -> Self {
         let config = Config::load();
+        if config.debug
+            && let Some(path) = crate::config::config_path("debug.log")
+        {
+            if let Err(error) = debug_log::init(&path) {
+                eprintln!("mangania: open debug log {}: {error}", path.display());
+            } else {
+                debug_log::log(format_args!("debug log: {}", path.display()));
+            }
+        }
+        debug_log::log(format_args!(
+            "config: spread={} prefetch={} cache_mb={} debug={}",
+            config.spread, config.prefetch, config.cache_mb, config.debug
+        ));
         let depth = prefetch.unwrap_or(config.prefetch);
+        debug_log::log(format_args!("prefetch depth: {depth}"));
         let cache_bytes = config.cache_bytes();
         let keys = KeyBindings::load();
         let mouse = MouseBindings::load();
@@ -89,9 +104,16 @@ impl App {
     }
 
     fn open(&mut self, path: &Path) {
+        debug_log::log(format_args!("open requested: {}", path.display()));
         match Archive::open(path) {
             Ok(mut archive) => {
+                debug_log::log(format_args!(
+                    "archive ready: {} page(s), {} entry(s)",
+                    archive.pages.len(),
+                    archive.names.len()
+                ));
                 if archive.pages.is_empty() {
+                    debug_log::log(format_args!("archive has no supported images"));
                     self.error = Some("no supported images in archive".to_string());
                     self.update_title();
                     return;
@@ -122,6 +144,7 @@ impl App {
             }
             Err(error) => {
                 eprintln!("mangania: {error}");
+                debug_log::log(format_args!("open failed: {error}"));
                 self.error = Some(error);
                 self.update_title();
             }
@@ -360,6 +383,7 @@ impl App {
         } else {
             "MangaNia - drop a ZIP file".to_string()
         };
+        debug_log::log(format_args!("title: {title}"));
         window.set_title(&title);
     }
 
@@ -391,10 +415,12 @@ impl App {
         else {
             return;
         };
-        if surface.resize(width, height).is_err() {
+        if let Err(error) = surface.resize(width, height) {
+            debug_log::log(format_args!("surface resize failed: {error}"));
             return;
         }
         let Ok(mut buffer) = surface.buffer_mut() else {
+            debug_log::log(format_args!("surface buffer unavailable"));
             return;
         };
 
@@ -402,14 +428,38 @@ impl App {
             self.viewer.as_ref().map_or((None, None, false), |viewer| {
                 viewer.visible_pages(self.spread)
             });
+        let page = self
+            .viewer
+            .as_ref()
+            .map(|viewer| viewer.current + 1)
+            .unwrap_or(0);
+        let cached = self
+            .viewer
+            .as_ref()
+            .is_some_and(|viewer| viewer.cache.contains(viewer.current));
+        debug_log::log(format_args!(
+            "draw: {}x{} page={} current={} next={} waiting={} cached={}",
+            width,
+            height,
+            page,
+            current.is_some(),
+            next.is_some(),
+            waiting_for_next,
+            cached
+        ));
 
         if current.is_none() || waiting_for_next {
+            debug_log::log(format_args!(
+                "draw: hold last frame ({} bytes)",
+                self.last_frame.len()
+            ));
             if self.last_frame.len() == buffer.len() {
                 buffer.copy_from_slice(&self.last_frame);
             } else {
                 view::blank(&mut buffer);
             }
         } else if let Some(current) = current {
+            let start = std::time::Instant::now();
             let pages = if self.spread {
                 [next.as_deref(), Some(current.as_ref())]
             } else {
@@ -424,8 +474,14 @@ impl App {
 
             self.last_frame.resize(buffer.len(), 0);
             self.last_frame.copy_from_slice(&buffer);
+            debug_log::log(format_args!(
+                "draw: rendered in {:.1}ms",
+                start.elapsed().as_secs_f64() * 1000.0
+            ));
         }
-        let _ = buffer.present();
+        if let Err(error) = buffer.present() {
+            debug_log::log(format_args!("surface present failed: {error}"));
+        }
     }
 
     fn handle_images_ready(&mut self) {
@@ -440,9 +496,19 @@ impl App {
 
         for (page, result) in results {
             match result {
-                Ok(image) => viewer.insert(page, image),
+                Ok(image) => {
+                    debug_log::log(format_args!(
+                        "page {} ready: {}x{} ({} bytes)",
+                        page + 1,
+                        image.width(),
+                        image.height(),
+                        image.as_raw().len()
+                    ));
+                    viewer.insert(page, image);
+                }
                 Err(message) => {
                     eprintln!("mangania: page {}: {message}", page + 1);
+                    debug_log::log(format_args!("page {} failed: {message}", page + 1));
                     viewer.errors.insert(page, message);
                 }
             }

@@ -5,6 +5,8 @@ use std::path::{Component, Path, PathBuf};
 
 use zip::ZipArchive;
 
+use crate::debug_log;
+
 const MAX_ENTRIES: usize = 100_000;
 const MAX_ENTRY_BYTES: u64 = 512 * 1024 * 1024;
 
@@ -17,11 +19,13 @@ pub struct Archive {
 impl Archive {
     pub fn open(path: &Path) -> Result<Self, String> {
         let path = resolve_shortcut(path)?;
+        debug_log::log(format_args!("archive: open {}", path.display()));
         let file = File::open(&path).map_err(|e| format!("open {}: {e}", path.display()))?;
         let file_len = file
             .metadata()
             .map_err(|e| format!("stat {}: {e}", path.display()))?
             .len();
+        debug_log::log(format_args!("archive: size={file_len} bytes"));
         let zip = ZipArchive::new(file)
             .map_err(|e| format!("read zip {} ({file_len} bytes): {e}", path.display()))?;
         if zip.len() > MAX_ENTRIES {
@@ -54,6 +58,11 @@ impl Archive {
 
         pages.sort_by(|a, b| natural_cmp(&a.0, &b.0));
         let (names, pages): (Vec<_>, Vec<_>) = pages.into_iter().unzip();
+        debug_log::log(format_args!(
+            "archive: entries={} pages={}",
+            archive.zip.len(),
+            pages.len()
+        ));
         archive.names = names;
         archive.pages = pages;
         Ok(archive)
@@ -67,6 +76,10 @@ impl Archive {
         if file.size() > MAX_ENTRY_BYTES {
             return Err(format!("entry {entry} is too large"));
         }
+        debug_log::log(format_args!(
+            "archive: entry {entry} declared_size={}",
+            file.size()
+        ));
 
         // `size()` is metadata from the archive; never trust it as an allocation bound.
         let mut data = Vec::new();
@@ -91,7 +104,11 @@ fn resolve_shortcut(path: &Path) -> Result<PathBuf, String> {
     if !is_shortcut(path) {
         return Ok(path.to_path_buf());
     }
-    windows_shortcut_target(path).map_err(|e| format!("resolve shortcut {}: {e}", path.display()))
+    debug_log::log(format_args!("shortcut: resolving {}", path.display()));
+    let target = windows_shortcut_target(path)
+        .map_err(|e| format!("resolve shortcut {}: {e}", path.display()))?;
+    debug_log::log(format_args!("shortcut: target={}", target.display()));
+    Ok(target)
 }
 
 #[cfg(windows)]

@@ -10,13 +10,14 @@ fn parses_all_config_fields() {
     assert!(!Config::parse("").spread);
 
     let config = Config::parse(
-        "spread = true\nexport_dir = \"/tmp/mangania-out\"\nexport_name = \"{book}_{page:03}\"\nprefetch = 4\ncache_mb = 64\n",
+        "spread = true\nexport_dir = \"/tmp/mangania-out\"\nexport_name = \"{book}_{page:03}\"\nprefetch = 4\ncache_mb = 64\ndebug = true\n",
     );
     assert!(config.spread);
     assert_eq!(config.export_dir, Some(PathBuf::from("/tmp/mangania-out")));
     assert_eq!(config.export_name, "{book}_{page:03}");
     assert_eq!(config.prefetch, 4);
     assert_eq!(config.cache_mb, 64);
+    assert!(config.debug);
     assert_eq!(config.cache_bytes(), 64 * 1024 * 1024);
 }
 
@@ -81,6 +82,7 @@ fn round_trips_config_file() {
         export_name: "{book}_{page:03}_{name}".to_string(),
         prefetch: 4,
         cache_mb: 64,
+        debug: true,
     };
 
     config.save_to(&path).unwrap();

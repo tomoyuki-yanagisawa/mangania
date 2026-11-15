@@ -30,6 +30,7 @@ export_dir = "~/Pictures/MangaNia"
 export_name = "{book}_{page:03}"
 prefetch = 2
 cache_mb = 128
+debug = false
 ```
 
 - `spread = false`（1ページ表示）が既定。
@@ -37,6 +38,7 @@ cache_mb = 128
 - `export_name` の省略時は `{book}_{page:03}`。
 - `prefetch` の省略時は 2。`--prefetch` が指定された場合は CLI を優先する。
 - `cache_mb` の省略時は 128。`0` も 128 として扱う。
+- `debug` の省略時は `false`。`true` にすると `config.toml` と同じディレクトリの `debug.log` にログを出力する。
 - 同名ファイルは上書きする。
 - 保存するのは現在ページのみで、ZIP 内の元画像バイト列をそのまま使う。
 

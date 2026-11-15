@@ -3,6 +3,8 @@ use std::sync::Arc;
 
 use image::RgbaImage;
 
+use crate::debug_log;
+
 pub struct Cache {
     max_pages: usize,
     max_bytes: usize,
@@ -33,6 +35,12 @@ impl Cache {
     pub fn insert(&mut self, page: usize, image: Arc<RgbaImage>, keep: usize) {
         let bytes = image.as_raw().len();
         if bytes > self.max_bytes && page != keep {
+            debug_log::log(format_args!(
+                "cache: skip page={} bytes={} over limit={}",
+                page + 1,
+                bytes,
+                self.max_bytes
+            ));
             return;
         }
 
@@ -54,8 +62,23 @@ impl Cache {
                 continue;
             }
             if let Some(image) = self.entries.remove(&oldest) {
-                self.used_bytes = self.used_bytes.saturating_sub(image.as_raw().len());
+                let bytes = image.as_raw().len();
+                self.used_bytes = self.used_bytes.saturating_sub(bytes);
+                debug_log::log(format_args!(
+                    "cache: evict page={} bytes={}",
+                    oldest + 1,
+                    bytes
+                ));
             }
         }
+
+        debug_log::log(format_args!(
+            "cache: insert page={} bytes={} used={}/{} entries={}",
+            page + 1,
+            bytes,
+            self.used_bytes,
+            self.max_bytes,
+            self.entries.len()
+        ));
     }
 }

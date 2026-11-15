@@ -2,10 +2,12 @@ use std::collections::{HashSet, VecDeque};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
+use std::time::Instant;
 
 use image::RgbaImage;
 
 use crate::archive::Archive;
+use crate::debug_log;
 use crate::decoder;
 
 struct Job {
@@ -42,12 +44,14 @@ impl Prefetch {
         let (sender, results) = mpsc::sync_channel(1);
         let worker_shared = Arc::clone(&shared);
         thread::spawn(move || {
+            debug_log::log(format_args!("worker: started"));
             let mut archive = archive;
             loop {
                 let job = {
                     let mut queue = worker_shared.queue.lock().unwrap();
                     loop {
                         if queue.closed {
+                            debug_log::log(format_args!("worker: closed"));
                             return;
                         }
                         if let Some(job) = queue.jobs.pop_front() {
@@ -57,14 +61,55 @@ impl Prefetch {
                     }
                 };
 
-                let result = archive
-                    .read_index(job.entry)
-                    .and_then(|bytes| decoder::decode(&bytes))
-                    .map(Arc::new);
+                let started = Instant::now();
+                debug_log::log(format_args!(
+                    "job start: page={} entry={}",
+                    job.page + 1,
+                    job.entry
+                ));
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let bytes = archive.read_index(job.entry)?;
+                    debug_log::log(format_args!(
+                        "job read: page={} bytes={} in {:.1}ms",
+                        job.page + 1,
+                        bytes.len(),
+                        started.elapsed().as_secs_f64() * 1000.0
+                    ));
+                    let decode_start = Instant::now();
+                    let image = decoder::decode(&bytes)?;
+                    debug_log::log(format_args!(
+                        "job decode: page={} {}x{} in {:.1}ms",
+                        job.page + 1,
+                        image.width(),
+                        image.height(),
+                        decode_start.elapsed().as_secs_f64() * 1000.0
+                    ));
+                    Ok(Arc::new(image))
+                }));
+
+                let result = match result {
+                    Ok(result) => result,
+                    Err(payload) => {
+                        let message = panic_message(payload);
+                        debug_log::log(format_args!("job panic: page={} {message}", job.page + 1));
+                        Err(format!("decode panicked: {message}"))
+                    }
+                };
+
+                if let Err(error) = &result {
+                    debug_log::log(format_args!("job failed: page={} {error}", job.page + 1));
+                }
                 if sender.send((job.page, result)).is_err() {
+                    debug_log::log(format_args!("worker: result receiver dropped"));
                     return;
                 }
+                debug_log::log(format_args!(
+                    "job done: page={} in {:.1}ms",
+                    job.page + 1,
+                    started.elapsed().as_secs_f64() * 1000.0
+                ));
                 if !notify() {
+                    debug_log::log(format_args!("worker: notify failed"));
                     return;
                 }
             }
@@ -79,6 +124,11 @@ impl Prefetch {
 
     /// `urgent` jobs jump ahead of queued prefetches and discard obsolete ones.
     pub fn request(&mut self, page: usize, entry: usize, urgent: bool) {
+        debug_log::log(format_args!(
+            "request: page={} entry={} urgent={urgent}",
+            page + 1,
+            entry
+        ));
         let mut queue = self.shared.queue.lock().unwrap();
         if queue.closed {
             return;
@@ -124,7 +174,18 @@ impl Prefetch {
 
 impl Drop for Prefetch {
     fn drop(&mut self) {
+        debug_log::log(format_args!("worker: stopping"));
         self.shared.queue.lock().unwrap().closed = true;
         self.shared.ready.notify_all();
+    }
+}
+
+fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_string()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "unknown panic".to_string()
     }
 }
