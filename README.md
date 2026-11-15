@@ -171,6 +171,8 @@ quit = ["Escape"]
 | `save_page` | 表示中のページを保存 |
 | `quit` | 終了（全画面中は全画面解除） |
 
+- アクション名は上表の名前のみを使用します。以前の別名（`next_page`、`previous`、`fullscreen`、`save`、`exit` など）は認識されないため、上表の名前に変更してください。未知の名前は警告して無視します。
+- 同じ入力が複数のアクションに割り当てられた場合、上表で先にあるアクションが優先されます。これは既定値と明示的な割り当ての間でも同じです。
 - キーは `修飾キー+キー` で指定します。修飾キーは `Ctrl`、`Shift`、`Alt`、`Super`（macOS の Cmd）です。
 - 名前付きキーは `Right`、`Left`、`Up`、`Down`、`Home`、`End`、`PageUp`、`PageDown`、`Escape`、`Space`、`Enter`、`Tab`、`Backspace`、`Delete`、`Insert`、`F1`〜`F35` などです。
 - 1文字キーはそのまま書きます（`v`、`s`、`1`）。`+` は `plus`、または `Ctrl++` のように書けます。

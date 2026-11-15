@@ -67,7 +67,7 @@ fn custom_key_bindings_replace_defaults() {
         r#"
 [keys]
 next = ["n", "PageDown"]
-save = ["Ctrl+Shift+S"]
+save_page = ["Ctrl+Shift+S"]
 quit = []
 "#,
     );
@@ -89,6 +89,26 @@ quit = []
     );
     assert_key(&bindings, character("s"), ModifiersState::CONTROL, None);
     assert_key(&bindings, Key::Named(NamedKey::Escape), empty, None);
+}
+
+#[test]
+fn action_aliases_do_not_override_defaults() {
+    let keys = KeyBindings::parse("[keys]\nnext_page = [\"n\"]\n");
+    assert_key(&keys, character("n"), ModifiersState::empty(), None);
+    assert_key(
+        &keys,
+        Key::Named(NamedKey::ArrowRight),
+        ModifiersState::empty(),
+        Some(Action::Next),
+    );
+
+    let mouse = MouseBindings::parse("[bindings]\nnext_page = [\"back\"]\n");
+    assert_mouse(&mouse, MouseInput::Button(MouseButton::Back), None);
+    assert_mouse(
+        &mouse,
+        MouseInput::Button(MouseButton::Left),
+        Some(Action::Next),
+    );
 }
 
 #[test]
