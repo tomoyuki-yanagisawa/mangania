@@ -107,8 +107,9 @@ softbuffer のピクセルバッファ
 | `keybindings.toml` | キー割り当て |
 | `mouse.toml` | マウス・ホイール割り当て |
 
-- `keybindings.toml` と `mouse.toml` は初回起動時に既定値で作成します。
-- `config.toml` は設定を保存したときに作成します。
+- `config.toml`、`keybindings.toml`、`mouse.toml` は初回起動時に既定値で作成します。
+- `config.toml` はコメント付きで生成し、設定画面の代わりに直接編集できるようにします。
+- `config.toml` は以後、設定を保存したときに更新します。
 - 読み込みに失敗した場合は既定値へフォールバックし、stderr に警告を出します。
 - 既定値と UX の詳細は [PREFERENCES.md](PREFERENCES.md) を参照してください。
 

@@ -78,6 +78,8 @@ cargo run --release -- --render-page 1 out.png path/to/book.zip
 - Windows: `%APPDATA%\mangania\config.toml`
 - Linux: `$XDG_CONFIG_HOME/mangania/config.toml`（未設定時は `~/.config/mangania/config.toml`）
 
+`config.toml` は初回起動時に既定値で作成されます。コメント付きなので、そのまま編集して次回起動時に反映できます。
+
 ```toml
 spread = true
 export_dir = "~/Pictures/MangaNia"

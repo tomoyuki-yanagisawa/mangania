@@ -88,11 +88,11 @@ save_page = ["double_left"]
 
 | ファイル | 作成タイミング |
 | --- | --- |
-| `config.toml` | 設定を保存したとき |
+| `config.toml` | 初回起動時（以後、設定保存時に更新） |
 | `keybindings.toml` | 初回起動時 |
 | `mouse.toml` | 初回起動時 |
 
-既定の保存先は `~/Pictures/MangaNia`。出力先がなければ作成する。
+`config.toml` はコメント付きで生成され、そのまま編集できる。既定の保存先は `~/Pictures/MangaNia`。出力先がなければ作成する。
 
 ## 4. パフォーマンスとリソース
 

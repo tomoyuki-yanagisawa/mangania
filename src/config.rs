@@ -35,8 +35,17 @@ impl Default for Config {
 impl Config {
     pub fn load() -> Self {
         config_path(CONFIG_FILE)
-            .map(|path| Self::load_from(&path))
+            .map(|path| Self::load_or_create_from(&path))
             .unwrap_or_default()
+    }
+
+    pub fn load_or_create_from(path: &Path) -> Self {
+        if !path.exists()
+            && let Err(error) = write_default_config(path)
+        {
+            eprintln!("mangania: write default config {}: {error}", path.display());
+        }
+        Self::load_from(path)
     }
 
     pub fn load_from(path: &Path) -> Self {
@@ -66,7 +75,20 @@ impl Config {
     }
 
     pub fn to_toml(&self) -> String {
-        toml::to_string(self).unwrap_or_default()
+        let mut text = String::from(concat!(
+            "# MangaNia settings\n",
+            "# spread: false = 1ページ表示, true = 見開き表示\n",
+            "# export_dir: 省略時は OS のピクチャフォルダ/MangaNia\n",
+            "# export_name: {book}, {page}, {page:03}, {name} が使えます\n",
+            "# prefetch: 先読み枚数\n",
+            "# cache_mb: メモリキャッシュ上限（MiB）。0 は既定値\n",
+            "\n",
+        ));
+        text.push_str(&toml::to_string(self).unwrap_or_default());
+        if self.export_dir.is_none() {
+            text.push_str("\n# export_dir = \"~/Pictures/MangaNia\"\n");
+        }
+        text
     }
 
     pub fn resolved_export_dir(&self) -> PathBuf {
@@ -89,6 +111,13 @@ impl Config {
         };
         cache_mb.saturating_mul(1024 * 1024)
     }
+}
+
+fn write_default_config(path: &Path) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, Config::default().to_toml())
 }
 
 fn expand_tilde(path: &Path) -> PathBuf {
