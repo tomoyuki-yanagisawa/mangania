@@ -267,6 +267,22 @@ cargo clippy --all-targets
 
 自然順ソート、パス除外、PNG/JPEG/BMPデコード、1ページ/見開き描画、CLI引数、ヘッドレス `--check` / `--render-page`、キャッシュの枚数/バイト上限、ナビゲーション境界、winit非依存のPrefetch、設定のTOML読み書き、ファイル名テンプレート展開・サニタイズ・元画像バイト列の保存、キー・マウス割り当ての解析と一致判定、シングル/ダブルクリックの判定をテストしています。GUI操作は手動確認です。
 
+## CI / リリース
+
+- Pull Request と main への push で GitHub Actions の CI が走ります。
+  - Ubuntu / macOS / Windows の3環境
+  - `cargo fmt --check`
+  - `cargo clippy --all-targets`
+  - `cargo test`
+- バージョンは `Cargo.toml` の `[package] version` で管理します。
+- `version` を更新し、`cargo check` で `Cargo.lock` も更新して main にマージすると、`v<version>` タグと GitHub Release を作成します。
+- Release には次の成果物を添付します。
+  - `mangania-v<version>-windows-x86_64.zip`
+  - `mangania-v<version>-macos-<arch>.tar.gz`
+  - `mangania-v<version>-linux-x86_64.tar.gz`
+- Release notes は前回タグからのコミットタイトル一覧です。
+- Windows 成果物は標準の `x86_64-pc-windows-msvc` ビルドです。Windows 7 向けは README の `build-std` 手順で別途ビルドします。
+
 ## ドキュメント
 
 - [DESIGN.md](docs/DESIGN.md): 現在のアーキテクチャと動作
