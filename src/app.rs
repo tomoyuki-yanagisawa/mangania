@@ -11,7 +11,6 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::keyboard::{Key, ModifiersState};
 use winit::window::{Fullscreen, Window, WindowId};
 
-use crate::archive::Archive;
 use crate::bindings::{Action, KeyBindings, MouseBindings, MouseInput, WheelDirection};
 use crate::click::ClickTracker;
 use crate::config::Config;
@@ -21,6 +20,7 @@ use crate::export;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::menu::MenuBar;
 use crate::navigation;
+use crate::open::Entry;
 use crate::prefetch::Prefetch;
 use crate::view;
 use crate::viewer::Viewer;
@@ -105,8 +105,13 @@ impl App {
 
     fn open(&mut self, path: &Path) {
         debug_log::log(format_args!("open requested: {}", path.display()));
-        match Archive::open(path) {
-            Ok(mut archive) => {
+        match Entry::open(path) {
+            Ok(entry) => {
+                let Entry {
+                    path: resolved_path,
+                    mut archive,
+                    ..
+                } = entry;
                 debug_log::log(format_args!(
                     "archive ready: {} page(s), {} entry(s)",
                     archive.pages.len(),
@@ -120,17 +125,17 @@ impl App {
                 }
 
                 let pages = std::mem::take(&mut archive.pages);
-                let name = path
+                let name = resolved_path
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| path.display().to_string());
+                    .unwrap_or_else(|| resolved_path.display().to_string());
                 let proxy = self.proxy.clone();
                 let prefetch = Prefetch::start(archive, move || {
                     proxy.send_event(UserEvent::ImageReady).is_ok()
                 });
                 self.viewer = Some(Viewer::new(
                     name,
-                    path.to_path_buf(),
+                    resolved_path,
                     pages,
                     prefetch,
                     self.depth,

@@ -1,29 +1,26 @@
 use std::path::{Path, PathBuf};
 
-use crate::archive::Archive;
 use crate::config::{Config, DEFAULT_EXPORT_NAME};
+use crate::open::Entry;
 
 pub fn save_current_page(
     archive_path: &Path,
     page: usize,
     config: &Config,
 ) -> Result<PathBuf, String> {
-    let mut archive = Archive::open(archive_path)?;
-    let entry_name = archive
-        .names
-        .get(page)
-        .cloned()
+    let mut entry = Entry::open(archive_path)?;
+    let entry_name = entry
+        .page_name(page)
+        .map(str::to_owned)
         .ok_or_else(|| "page out of range".to_string())?;
-    let entry = *archive
-        .pages
-        .get(page)
-        .ok_or_else(|| "page out of range".to_string())?;
-    let bytes = archive.read_index(entry)?;
+    let bytes = entry.read_page(page)?;
 
-    let book = archive_path
+    let book = entry
+        .path
         .file_stem()
         .and_then(|value| value.to_str())
-        .unwrap_or("book");
+        .unwrap_or("book")
+        .to_string();
     let name = Path::new(&entry_name)
         .file_stem()
         .and_then(|value| value.to_str())
@@ -37,7 +34,7 @@ pub fn save_current_page(
     } else {
         &config.export_name
     };
-    let stem = sanitize_filename(&expand_name(template, book, page + 1, name));
+    let stem = sanitize_filename(&expand_name(template, &book, page + 1, name));
 
     let directory = config.resolved_export_dir();
     std::fs::create_dir_all(&directory)
