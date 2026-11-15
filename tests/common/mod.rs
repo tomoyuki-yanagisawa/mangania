@@ -9,13 +9,7 @@ use image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
 pub fn temp_zip(entries: &[(&str, &[u8])]) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "mangania-test-{}-{}",
-        std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("book.zip");
+    let path = temp_dir().join("book.zip");
     let file = std::fs::File::create(&path).unwrap();
     let mut writer = zip::ZipWriter::new(file);
     for &(name, data) in entries {
@@ -26,6 +20,22 @@ pub fn temp_zip(entries: &[(&str, &[u8])]) -> PathBuf {
     }
     writer.finish().unwrap();
     path
+}
+
+pub fn temp_file(name: &str, bytes: &[u8]) -> PathBuf {
+    let path = temp_dir().join(name);
+    std::fs::write(&path, bytes).unwrap();
+    path
+}
+
+fn temp_dir() -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "mangania-test-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
 }
 
 pub fn cleanup(path: &Path) {

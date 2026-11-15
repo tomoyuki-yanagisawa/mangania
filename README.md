@@ -207,6 +207,7 @@ JPEG 2000 は対象外です。
 - デコード済みページは `prefetch + 2` 枚、かつ最大 `cache_mb`（既定128MiB）まで保持（現在ページは常に保持）
 - 次ページの準備中は直前のフレームを保持して暗転を防ぐ
 - 壊れた ZIP / 画像はエラーとして扱い、プロセスは落とさない
+- RAR/CBR・7z・HTML・空・破損ファイルを判別し、形式に応じたエラーを表示
 - パストラバーサル、隠しファイル、`__MACOSX` を除外
 - エントリサイズ・エントリ数に上限を設け、対応形式を限定する
 - 1ページ表示 / 見開き表示をメニューバーで切替
@@ -254,6 +255,7 @@ src/
 ├── export.rs    # 表示中ページの保存、ファイル名テンプレート
 ├── headless.rs  # GUIなしの list / check / render-page
 ├── archive.rs   # ZIP 索引・自然順・読み出し
+├── open.rs      # パス解決（.lnk）・形式判定・エントリ
 ├── decoder.rs   # JPEG / PNG / WebP / BMP デコード
 ├── prefetch.rs  # ワーカースレッドと優先度付きジョブ（winit非依存）
 ├── menu.rs      # Windows / macOS のネイティブメニュー
@@ -270,6 +272,7 @@ tests/
 ├── export.rs
 ├── headless.rs
 ├── navigation.rs
+├── open.rs
 ├── prefetch.rs
 └── view.rs
 ```
@@ -281,7 +284,7 @@ cargo test
 cargo clippy --all-targets
 ```
 
-自然順ソート、パス除外、PNG/JPEG/BMPデコード、1ページ/見開き描画、CLI引数、ヘッドレス `--check` / `--render-page`、キャッシュの枚数/バイト上限、ナビゲーション境界、winit非依存のPrefetch、設定のTOML読み書き、ファイル名テンプレート展開・サニタイズ・元画像バイト列の保存、キー・マウス割り当ての解析と一致判定、シングル/ダブルクリックの判定をテストしています。GUI操作は手動確認です。
+自然順ソート、パス除外、PNG/JPEG/BMPデコード、1ページ/見開き描画、CLI引数、ヘッドレス `--check` / `--render-page`、キャッシュの枚数/バイト上限、ナビゲーション境界、winit非依存のPrefetch、設定のTOML読み書き、ファイル名テンプレート展開・サニタイズ・元画像バイト列の保存、キー・マウス割り当ての解析と一致判定、シングル/ダブルクリックの判定、ZIP / RAR / 7z / HTML / 空 / 破損ファイルの形式判定と `.lnk` のエラーをテストしています。GUI操作は手動確認です。
 
 ## CI / リリース
 
