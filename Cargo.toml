@@ -14,3 +14,7 @@ zip = { version = "9.5.1", default-features = false, features = ["deflate"] }
 
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
 muda = "0.21.2"
+
+[build-dependencies]
+resvg = { version = "0.50.0", default-features = false }
+winresource = "0.1.34"
