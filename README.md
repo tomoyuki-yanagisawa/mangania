@@ -1,13 +1,17 @@
-<p align="center"><img src="assets/icon.svg" width="96" height="96" alt="MangaNia icon"></p>
+<p align="center">
+  <img src="assets/icon.svg" width="120" height="120" alt="MangaNia icon">
+</p>
 
-# MangaNia
+<h1 align="center">MangaNia</h1>
 
-ZIP 内の漫画画像を表示する、小さなネイティブビューアの試作です。
-Windows 7 を優先しつつ、macOS / Linux でもビルドできる構成にしています。
+<p align="center">
+  ZIP 内の漫画画像を表示する、小さなネイティブビューアの試作です。<br>
+  Windows 7 を優先しつつ、macOS / Linux でもビルドできる構成にしています。
+</p>
 
-- 設計: [docs/DESIGN.md](docs/DESIGN.md)
-- 技術判断: [docs/DECISIONS.md](docs/DECISIONS.md)
-- 既定値・UX: [docs/PREFERENCES.md](docs/PREFERENCES.md)
+<p align="center">
+  <a href="docs/DESIGN.md">設計</a> ・ <a href="docs/DECISIONS.md">技術判断</a> ・ <a href="docs/PREFERENCES.md">既定値・UX</a>
+</p>
 
 ## 使い方
 
