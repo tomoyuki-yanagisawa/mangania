@@ -35,21 +35,22 @@ pub fn render_spread(
 
 /// Fits the given pages side by side, preserving their relative sizes.
 ///
-/// This path does not cache resized pages and uses the default filter. The GUI
-/// uses [`render_pages_cached`] instead.
+/// Uses a temporary cache and the default filter. The GUI retains its cache
+/// between calls via [`render_pages_cached`].
 pub fn render_pages(buffer: &mut [u32], width: usize, height: usize, pages: &[Option<&RgbaImage>]) {
     let pages: Vec<_> = pages
         .iter()
-        .map(|page| page.map(|image| (0, image, image.dimensions())))
+        .enumerate()
+        .map(|(index, page)| page.map(|image| (index, image, image.dimensions())))
         .collect();
-    render_impl(
+    render_pages_cached(
         buffer,
         width,
         height,
         &pages,
         ScaleFilter::Triangle,
         0,
-        None,
+        &mut ScaledCache::new(0, 0),
     );
 }
 
@@ -102,18 +103,6 @@ pub fn render_pages_cached(
     current: usize,
     cache: &mut ScaledCache,
 ) {
-    render_impl(buffer, width, height, pages, filter, current, Some(cache));
-}
-
-fn render_impl(
-    buffer: &mut [u32],
-    width: usize,
-    height: usize,
-    pages: &[Option<RenderPage<'_>>],
-    filter: ScaleFilter,
-    current: usize,
-    mut cache: Option<&mut ScaledCache>,
-) {
     blank(buffer);
     if width == 0 || height == 0 {
         return;
@@ -147,19 +136,27 @@ fn render_impl(
     for (page, image, original) in pages.iter().flatten() {
         let (target_width, target_height) = scaled(original.0, original.1, scale);
         let y = start_y + (draw_height as isize - target_height as isize) / 2;
-        blit_scaled(
-            buffer,
-            width,
-            height,
-            *page,
-            image,
-            (x, y),
-            (target_width, target_height),
-            filter,
-            current,
-            cache.as_deref_mut(),
-            &keep,
-        );
+        let target = (target_width, target_height);
+        if target == image.dimensions() {
+            blit(buffer, width, height, image, x, y);
+        } else {
+            let key = ScaledKey::new(*page, target_width, target_height, filter);
+            let display = if let Some(resized) = cache.get(key) {
+                debug_log::log(format_args!(
+                    "view: resize cache hit page={} size={}x{} filter={}",
+                    page + 1,
+                    target_width,
+                    target_height,
+                    filter.as_str()
+                ));
+                resized
+            } else {
+                let resized = resized(image, target, filter);
+                cache.insert(key, Arc::clone(&resized), &keep, current);
+                resized
+            };
+            blit(buffer, width, height, &display, x, y);
+        }
         x += target_width as isize;
     }
 }
@@ -169,47 +166,6 @@ fn scaled(width: u32, height: u32, scale: f64) -> (u32, u32) {
         ((width as f64 * scale).round() as u32).max(1),
         ((height as f64 * scale).round() as u32).max(1),
     )
-}
-
-#[allow(clippy::too_many_arguments)]
-fn blit_scaled(
-    buffer: &mut [u32],
-    width: usize,
-    height: usize,
-    page: usize,
-    image: &RgbaImage,
-    position: (isize, isize),
-    target: (u32, u32),
-    filter: ScaleFilter,
-    current: usize,
-    cache: Option<&mut ScaledCache>,
-    keep: &[usize],
-) {
-    if target == image.dimensions() {
-        blit(buffer, width, height, image, position.0, position.1);
-        return;
-    }
-
-    let resized = if let Some(cache) = cache {
-        let key = ScaledKey::new(page, target.0, target.1, filter);
-        if let Some(resized) = cache.get(key) {
-            debug_log::log(format_args!(
-                "view: resize cache hit page={} size={}x{} filter={}",
-                page + 1,
-                target.0,
-                target.1,
-                filter.as_str()
-            ));
-            resized
-        } else {
-            let resized = resized(image, target, filter);
-            cache.insert(key, Arc::clone(&resized), keep, current);
-            resized
-        }
-    } else {
-        resized(image, target, filter)
-    };
-    blit(buffer, width, height, &resized, position.0, position.1);
 }
 
 fn blit(

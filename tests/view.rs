@@ -105,6 +105,44 @@ fn reuses_scaled_pages_by_page_and_filter() {
 }
 
 #[test]
+fn retains_visible_spread_at_each_target_size_over_cache_budget() {
+    let left = blue();
+    let right = red();
+    let pages = [
+        Some((0, &left, left.dimensions())),
+        Some((1, &right, right.dimensions())),
+    ];
+    let mut cache = ScaledCache::new(0, 0);
+    let mut buffer = vec![0; 8 * 4];
+    view::render_pages_cached(
+        &mut buffer,
+        8,
+        4,
+        &pages,
+        ScaleFilter::Triangle,
+        0,
+        &mut cache,
+    );
+    assert_eq!(cache.len(), 2);
+    assert_eq!(buffer[0], 0x00_00ff);
+    assert_eq!(buffer[7], 0xff_0000);
+
+    let mut larger = vec![0; 12 * 6];
+    view::render_pages_cached(
+        &mut larger,
+        12,
+        6,
+        &pages,
+        ScaleFilter::Triangle,
+        0,
+        &mut cache,
+    );
+    assert_eq!(cache.len(), 4);
+    assert_eq!(larger[0], 0x00_00ff);
+    assert_eq!(larger[11], 0xff_0000);
+}
+
+#[test]
 fn spread_layout_uses_original_dimensions_not_preview_dimensions() {
     // Both previews are fitted to the window, so their dimensions no longer
     // share a common scale. The spread must still lay them out by 1:1 and 1:2
