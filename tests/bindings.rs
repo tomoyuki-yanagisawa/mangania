@@ -39,6 +39,7 @@ fn default_key_bindings_work() {
         (Key::Named(NamedKey::End), empty, Action::Last),
         (character("v"), empty, Action::ToggleSpread),
         (Key::Named(NamedKey::F11), empty, Action::ToggleFullscreen),
+        (Key::Named(NamedKey::Enter), empty, Action::ToggleFullscreen),
         (character("s"), ModifiersState::CONTROL, Action::SavePage),
         (character("s"), ModifiersState::SUPER, Action::SavePage),
         (Key::Named(NamedKey::Escape), empty, Action::Quit),
@@ -139,6 +140,7 @@ fn default_mouse_bindings_work() {
     let cases = [
         (MouseInput::Button(MouseButton::Left), Action::Next),
         (MouseInput::Button(MouseButton::Right), Action::Prev),
+        (MouseInput::Button(MouseButton::Middle), Action::NextSingle),
         (MouseInput::Wheel(WheelDirection::Down), Action::Next),
         (MouseInput::Wheel(WheelDirection::Up), Action::Prev),
         (MouseInput::DoubleClick(MouseButton::Left), Action::SavePage),

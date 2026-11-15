@@ -136,16 +136,39 @@ impl App {
         else {
             return;
         };
-        self.go_to(page);
+        self.go_to_unaligned(page);
+    }
+
+    fn navigate_single(&mut self, delta: isize) {
+        let Some(viewer) = &self.viewer else {
+            return;
+        };
+        let Some(page) = navigation::step_single(viewer.current, viewer.pages.len(), delta) else {
+            return;
+        };
+        self.go_to_unaligned(page);
     }
 
     fn go_to(&mut self, page: usize) {
+        self.go_to_inner(page, true);
+    }
+
+    fn go_to_unaligned(&mut self, page: usize) {
+        self.go_to_inner(page, false);
+    }
+
+    fn go_to_inner(&mut self, page: usize, align: bool) {
         let spread = self.spread;
         self.scroll = 0.0;
         let Some(viewer) = self.viewer.as_mut() else {
             return;
         };
-        if !viewer.go_to(page, spread) {
+        let moved = if align {
+            viewer.go_to(page, spread)
+        } else {
+            viewer.go_to_unaligned(page)
+        };
+        if !moved {
             return;
         }
         self.error = None;
@@ -233,6 +256,8 @@ impl App {
         match action {
             Action::Next => self.navigate(1),
             Action::Prev => self.navigate(-1),
+            Action::NextSingle => self.navigate_single(1),
+            Action::PrevSingle => self.navigate_single(-1),
             Action::First => self.go_to(0),
             Action::Last => self.go_to(usize::MAX),
             Action::ToggleSpread => self.set_spread(!self.spread),

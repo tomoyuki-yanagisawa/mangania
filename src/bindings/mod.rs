@@ -18,6 +18,8 @@ pub use mouse::{
 pub enum Action {
     Next,
     Prev,
+    NextSingle,
+    PrevSingle,
     First,
     Last,
     ToggleSpread,
@@ -29,9 +31,11 @@ pub enum Action {
 }
 
 impl Action {
-    const ALL: [Action; 10] = [
+    const ALL: [Action; 12] = [
         Action::Next,
         Action::Prev,
+        Action::NextSingle,
+        Action::PrevSingle,
         Action::First,
         Action::Last,
         Action::ToggleSpread,
@@ -46,6 +50,8 @@ impl Action {
         match self {
             Action::Next => "next",
             Action::Prev => "prev",
+            Action::NextSingle => "next_single",
+            Action::PrevSingle => "prev_single",
             Action::First => "first",
             Action::Last => "last",
             Action::ToggleSpread => "toggle_spread",
@@ -61,6 +67,8 @@ impl Action {
         Some(match name {
             "next" | "next_page" => Action::Next,
             "prev" | "previous" | "prev_page" | "previous_page" => Action::Prev,
+            "next_single" | "next_one" => Action::NextSingle,
+            "prev_single" | "prev_one" => Action::PrevSingle,
             "first" | "first_page" => Action::First,
             "last" | "last_page" => Action::Last,
             "toggle_spread" => Action::ToggleSpread,

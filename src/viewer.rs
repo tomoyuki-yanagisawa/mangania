@@ -44,6 +44,17 @@ impl Viewer {
         let Some(page) = navigation::clamp(page, self.pages.len(), spread) else {
             return false;
         };
+        self.apply_page(page)
+    }
+
+    pub(crate) fn go_to_unaligned(&mut self, page: usize) -> bool {
+        let Some(page) = navigation::clamp_page(page, self.pages.len()) else {
+            return false;
+        };
+        self.apply_page(page)
+    }
+
+    fn apply_page(&mut self, page: usize) -> bool {
         if self.current == page {
             return false;
         }
