@@ -1,6 +1,8 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
+use crate::config::DEFAULT_PREFETCH;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Mode {
     Gui,
@@ -13,23 +15,24 @@ pub enum Mode {
 #[derive(Debug)]
 pub struct Args {
     pub path: Option<PathBuf>,
-    pub prefetch: usize,
+    pub prefetch: Option<usize>,
     pub mode: Mode,
 }
 
 pub fn parse(args: impl Iterator<Item = OsString>) -> Result<Args, String> {
     let mut args = args;
     let mut path = None;
-    let mut prefetch = 2;
+    let mut prefetch = None;
     let mut mode = Mode::Gui;
 
     while let Some(arg) = args.next() {
         match arg.to_str() {
             Some("--prefetch") => {
-                prefetch = args
-                    .next()
-                    .and_then(|value| value.to_str().and_then(|value| value.parse().ok()))
-                    .unwrap_or(2);
+                prefetch = Some(
+                    args.next()
+                        .and_then(|value| value.to_str().and_then(|value| value.parse().ok()))
+                        .unwrap_or(DEFAULT_PREFETCH),
+                );
             }
             Some("--list") => mode = Mode::List,
             Some("--check") => mode = Mode::Check,

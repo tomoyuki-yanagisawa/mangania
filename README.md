@@ -11,7 +11,7 @@ Windows 7 を優先しつつ、macOS / Linux でもビルドできる構成に�
 
 ```sh
 cargo run --release -- path/to/book.zip
-# 先読みページ数を指定する場合（既定 2）
+# 先読みページ数を指定する場合（config.toml の prefetch を上書き）
 cargo run --release -- --prefetch 4 path/to/book.zip
 ```
 
@@ -72,7 +72,7 @@ cargo run --release -- --render-page 1 out.png path/to/book.zip
 
 ## 設定ファイル
 
-表示モードと保存設定はTOMLで保存されます。
+表示モード、保存設定、先読み、メモリキャッシュはTOMLで設定します。
 
 - macOS: `~/Library/Application Support/mangania/config.toml`
 - Windows: `%APPDATA%\mangania\config.toml`
@@ -82,11 +82,16 @@ cargo run --release -- --render-page 1 out.png path/to/book.zip
 spread = true
 export_dir = "~/Pictures/MangaNia"
 export_name = "{book}_{page:03}"
+prefetch = 2
+cache_mb = 128
 ```
 
 - `spread = true` が見開き表示、`false` が1ページ表示です。
 - `export_dir` は保存先ディレクトリです。`~` を展開します。省略時は `~/Pictures/MangaNia` です。
 - `export_name` は保存ファイル名のテンプレートです。省略時は `{book}_{page:03}` です。
+- `prefetch` は先読み枚数です。省略時は 2 です。`--prefetch` を指定した場合は CLI が優先されます。
+- `cache_mb` はメモリキャッシュの上限（MiB）です。省略時は 128、`0` も 128 として扱います。
+- キャッシュ枚数は `prefetch + 2` です。
 - 拡張子はテンプレートに含めず、元画像から自動で付きます。
 
 ### ファイル名テンプレート
@@ -180,9 +185,9 @@ JPEG 2000 は対象外です。
 ## 設計上の特徴
 
 - ZIP の Central Directory を一度だけ索引化し、自然順に並べる
-- 現在ページは最優先でデコードし、次ページ以降を `--prefetch` の枚数だけ先読み
+- 現在ページは最優先でデコードし、`prefetch` の枚数だけ次ページ以降を先読み
 - ZIP 読み出しと画像デコードはワーカースレッドで行い、UI をブロックしない
-- デコード済みページは `先読み枚数 + 2` 枚、かつ最大128MiBまで保持（現在ページは常に保持）
+- デコード済みページは `prefetch + 2` 枚、かつ最大 `cache_mb`（既定128MiB）まで保持（現在ページは常に保持）
 - 次ページの準備中は直前のフレームを保持して暗転を防ぐ
 - 壊れた ZIP / 画像はエラーとして扱い、プロセスは落とさない
 - パストラバーサル、隠しファイル、`__MACOSX` を除外
