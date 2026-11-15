@@ -62,37 +62,18 @@ impl Action {
             Action::Quit => "quit",
         }
     }
-
-    fn from_name(name: &str) -> Option<Self> {
-        Some(match name {
-            "next" | "next_page" => Action::Next,
-            "prev" | "previous" | "prev_page" | "previous_page" => Action::Prev,
-            "next_single" | "next_one" => Action::NextSingle,
-            "prev_single" | "prev_one" => Action::PrevSingle,
-            "first" | "first_page" => Action::First,
-            "last" | "last_page" => Action::Last,
-            "toggle_spread" => Action::ToggleSpread,
-            "single_page" => Action::SinglePage,
-            "spread_page" => Action::SpreadPage,
-            "toggle_fullscreen" | "fullscreen" => Action::ToggleFullscreen,
-            "save_page" | "save" => Action::SavePage,
-            "quit" | "exit" => Action::Quit,
-            _ => return None,
-        })
-    }
 }
 
 fn resolve_bindings<T: Copy>(
-    map: BTreeMap<String, Vec<String>>,
+    mut map: BTreeMap<String, Vec<String>>,
     file: &str,
     what: &str,
     defaults: Option<&[(T, Action)]>,
     parse: impl Fn(&str) -> Option<T>,
 ) -> Vec<(T, Action)> {
-    let mut canonical = canonical_actions(map, file);
     let mut pairs = Vec::new();
     for action in Action::ALL {
-        match canonical.remove(action.as_str()) {
+        match map.remove(action.as_str()) {
             Some(specs) => {
                 for spec in specs {
                     match parse(&spec) {
@@ -116,23 +97,10 @@ fn resolve_bindings<T: Copy>(
             }
         }
     }
-    pairs
-}
-
-fn canonical_actions(
-    map: BTreeMap<String, Vec<String>>,
-    file: &str,
-) -> BTreeMap<String, Vec<String>> {
-    let mut canonical = BTreeMap::new();
-    for (name, specs) in map {
-        match Action::from_name(&name) {
-            Some(action) => {
-                canonical.insert(action.as_str().to_string(), specs);
-            }
-            None => eprintln!("mangania: {file}: unknown action {name:?}"),
-        }
+    for name in map.keys() {
+        eprintln!("mangania: {file}: unknown action {name:?}");
     }
-    canonical
+    pairs
 }
 
 fn load_bindings<T: Default>(file: &str, default_text: &str, parse: impl Fn(&str) -> T) -> T {
@@ -161,5 +129,57 @@ fn ensure_default_file(path: &Path, contents: &str) {
     }
     if let Err(error) = std::fs::write(path, contents) {
         eprintln!("mangania: write {}: {error}", path.display());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canonical_names_are_unique_and_ordered() {
+        let names: Vec<_> = Action::ALL.iter().map(|action| action.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "next",
+                "prev",
+                "next_single",
+                "prev_single",
+                "first",
+                "last",
+                "toggle_spread",
+                "single_page",
+                "spread_page",
+                "toggle_fullscreen",
+                "save_page",
+                "quit",
+            ]
+        );
+    }
+
+    #[test]
+    fn resolution_keeps_defaults_and_action_priority() {
+        let defaults = [
+            ('x', Action::Next),
+            ('y', Action::Prev),
+            ('z', Action::Quit),
+        ];
+        let map = BTreeMap::from([
+            ("prev".into(), vec!["x".into()]),
+            ("quit".into(), vec![]),
+            ("next_page".into(), vec!["a".into()]),
+            ("unknown".into(), vec!["b".into()]),
+        ]);
+        let pairs = resolve_bindings(map, "test", "input", Some(&defaults), |s| s.chars().next());
+        assert_eq!(pairs, [('x', Action::Next), ('x', Action::Prev)]);
+    }
+
+    #[test]
+    fn explicit_invalid_inputs_replace_defaults() {
+        let defaults = [('x', Action::Next)];
+        let map = BTreeMap::from([("next".into(), vec!["invalid".into()])]);
+        let pairs = resolve_bindings(map, "test", "input", Some(&defaults), |_| None);
+        assert!(pairs.is_empty());
     }
 }
