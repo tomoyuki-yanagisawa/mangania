@@ -25,7 +25,7 @@ use crate::navigation;
 use crate::open::Entry;
 use crate::prefetch::Prefetch;
 use crate::view;
-use crate::viewer::{Viewer, Viewport};
+use crate::viewer::{FrameState, Viewer, Viewport, frame_state};
 
 pub fn run(path: Option<PathBuf>, prefetch: Option<usize>) -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
@@ -55,6 +55,9 @@ struct App {
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     menu: Option<MenuBar>,
     error: Option<String>,
+    open_generation: u64,
+    viewer_generation: u64,
+    saving: bool,
 }
 
 impl App {
@@ -106,12 +109,32 @@ impl App {
             #[cfg(any(target_os = "windows", target_os = "macos"))]
             menu: None,
             error: None,
+            open_generation: 0,
+            viewer_generation: 0,
+            saving: false,
         }
     }
 
     fn open(&mut self, path: &Path) {
         debug_log::log(format_args!("open requested: {}", path.display()));
-        match Entry::open(path) {
+        self.open_generation = self.open_generation.wrapping_add(1);
+        let generation = self.open_generation;
+        let path = path.to_owned();
+        let proxy = self.proxy.clone();
+        self.status = Some(format!("opening {}...", path.display()));
+        self.update_title();
+        std::thread::spawn(move || {
+            let result = Entry::open(&path);
+            let _ = proxy.send_event(UserEvent::Opened(generation, result));
+        });
+    }
+
+    fn finish_open(&mut self, generation: u64, result: Result<Entry, String>) {
+        if generation != self.open_generation {
+            return;
+        }
+        self.status = None;
+        match result {
             Ok(entry) => {
                 let Entry {
                     path: resolved_path,
@@ -148,6 +171,7 @@ impl App {
                     self.cache_bytes,
                     self.viewport(),
                 ));
+                self.viewer_generation = self.viewer_generation.wrapping_add(1);
                 self.error = None;
                 self.status = None;
                 self.scroll = 0.0;
@@ -332,10 +356,32 @@ impl App {
     }
 
     fn save_current_page(&mut self) {
+        if self.saving {
+            return;
+        }
         let Some(viewer) = &self.viewer else {
             return;
         };
-        match export::save_current_page(&viewer.path, viewer.current, &self.config) {
+        let path = viewer.path.clone();
+        let page = viewer.current;
+        let config = self.config.clone();
+        let generation = self.viewer_generation;
+        let proxy = self.proxy.clone();
+        self.saving = true;
+        self.status = Some("saving...".to_string());
+        self.update_title();
+        std::thread::spawn(move || {
+            let result = export::save_current_page(&path, page, &config);
+            let _ = proxy.send_event(UserEvent::Saved(generation, result));
+        });
+    }
+
+    fn finish_save(&mut self, generation: u64, result: Result<PathBuf, String>) {
+        self.saving = false;
+        if generation != self.viewer_generation {
+            return;
+        }
+        match result {
             Ok(path) => {
                 eprintln!("mangania: saved {}", path.display());
                 let name = path
@@ -412,6 +458,8 @@ impl App {
             title
         } else if let Some(error) = &self.error {
             format!("MangaNia - error: {error}")
+        } else if let Some(status) = &self.status {
+            format!("MangaNia - {status}")
         } else {
             "MangaNia - drop a ZIP file".to_string()
         };
@@ -513,7 +561,15 @@ impl App {
             cached
         ));
 
-        if current.is_none() || waiting_for_next {
+        let current_failed = self
+            .viewer
+            .as_ref()
+            .is_some_and(|viewer| viewer.errors.contains_key(&viewer.current));
+        let state = frame_state(current.is_some(), current_failed, waiting_for_next);
+        if state == FrameState::Failed {
+            view::blank(&mut buffer);
+            self.last_frame.clear();
+        } else if state == FrameState::Loading {
             debug_log::log(format_args!(
                 "draw: hold last frame ({} bytes)",
                 self.last_frame.len()
@@ -664,6 +720,8 @@ impl ApplicationHandler<UserEvent> for App {
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
             UserEvent::ImageReady => self.handle_images_ready(),
+            UserEvent::Opened(generation, result) => self.finish_open(generation, result),
+            UserEvent::Saved(generation, result) => self.finish_save(generation, result),
             #[cfg(any(target_os = "windows", target_os = "macos"))]
             UserEvent::Menu(event) => self.handle_menu(event, _event_loop),
         }
