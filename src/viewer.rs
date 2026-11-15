@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use image::RgbaImage;
 
+use crate::archive::Page;
 use crate::cache::{ScaledCache, ScaledKey};
 use crate::config::ScaleFilter;
 use crate::debug_log;
@@ -54,7 +55,7 @@ pub(crate) fn frame_state(
 pub(crate) struct Viewer {
     pub(crate) file_name: String,
     pub(crate) path: PathBuf,
-    pub(crate) pages: Vec<usize>,
+    pub(crate) pages: Vec<Page>,
     pub(crate) current: usize,
     pub(crate) prefetch: Prefetch,
     pub(crate) cache: ScaledCache,
@@ -70,7 +71,7 @@ impl Viewer {
     pub(crate) fn new(
         file_name: String,
         path: PathBuf,
-        pages: Vec<usize>,
+        pages: Vec<Page>,
         prefetch: Prefetch,
         depth: usize,
         cache_bytes: usize,
@@ -168,7 +169,7 @@ impl Viewer {
         if !urgent && self.attempted.contains(&page) {
             return;
         }
-        let entry = self.pages[page];
+        let entry = self.pages[page].entry;
         self.prefetch.request(page, entry, urgent);
     }
 
