@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -16,6 +16,7 @@ pub(crate) struct Viewer {
     pub(crate) prefetch: Prefetch,
     pub(crate) cache: Cache,
     pub(crate) errors: HashMap<usize, String>,
+    uncached: HashSet<usize>,
     depth: usize,
 }
 
@@ -36,6 +37,7 @@ impl Viewer {
             prefetch,
             cache: Cache::new(depth.saturating_add(2), cache_bytes),
             errors: HashMap::new(),
+            uncached: HashSet::new(),
             depth,
         }
     }
@@ -69,8 +71,10 @@ impl Viewer {
 
     pub(crate) fn request_current(&mut self, spread: bool) {
         let current = self.current;
+        self.uncached.remove(&current);
         self.request(current, true);
         if spread && current + 1 < self.pages.len() {
+            self.uncached.remove(&(current + 1));
             self.request(current + 1, false);
         }
     }
@@ -93,12 +97,25 @@ impl Viewer {
         {
             return;
         }
+        if !urgent && self.uncached.contains(&page) {
+            return;
+        }
         let entry = self.pages[page];
         self.prefetch.request(page, entry, urgent);
     }
 
-    pub(crate) fn insert(&mut self, page: usize, image: Arc<RgbaImage>) {
-        self.cache.insert(page, image, self.current);
+    pub(crate) fn insert(&mut self, page: usize, image: Arc<RgbaImage>, spread: bool) {
+        let next = self.current.saturating_add(1);
+        let keep = if spread && next < self.pages.len() {
+            [self.current, next]
+        } else {
+            [self.current, self.current]
+        };
+        if self.cache.insert(page, image, &keep) || keep.contains(&page) {
+            self.uncached.remove(&page);
+        } else {
+            self.uncached.insert(page);
+        }
     }
 
     /// Returns the current page, the next page in spread mode, and whether the
