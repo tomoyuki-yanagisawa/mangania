@@ -160,3 +160,11 @@
 **理由**: 通常の `x86_64-pc-windows-msvc` ビルドは Rust 1.78 以降 Windows 10 の `ProcessPrng` を要求するため、Windows 7 では起動できない。実機で確認できる Win7 成果物を継続的に出す必要がある。
 
 **影響**: nightly と rust-src に依存する。Tier 3 ターゲットのため、実機検証と nightly の変化には注意が必要。Windows 7 では Universal CRT 更新が別途必要。
+
+## ADR-020: Windows 7 のビルド確認は Release 時のみ行う
+
+**決定**: ADR-019 のうち、PR / main push の CI で Win7 ターゲットをビルドする部分をやめる。Win7 ターゲットのビルドは Release workflow の `build-win7` ジョブだけで行う。
+
+**理由**: PR の CI で生成した artifact は GitHub Actions から取得する必要があり、Windows 7 実機ではログインできないため検証に使いにくい。バージョン bump の Release で公開される zip なら Win7 から直接ダウンロードできる。PR ごとの nightly + `build-std` のコストも削減できる。
+
+**影響**: Win7 ターゲットのビルド破損は Release まで気づかない可能性がある。必要なら手元または一時的な workflow で確認する。

@@ -285,7 +285,6 @@ cargo clippy --all-targets
 
 - Pull Request と main への push で GitHub Actions の CI が走ります。
   - Ubuntu / macOS / Windows の3環境で `cargo fmt --check` / `cargo clippy --all-targets` / `cargo test`
-  - Windows 7 ターゲット `x86_64-win7-windows-msvc` のビルド確認（nightly + `build-std`）
 - バージョンは `Cargo.toml` の `[package] version` で管理します。
 - `version` を更新し、`cargo check` で `Cargo.lock` も更新して main にマージすると、`v<version>` タグと GitHub Release を作成します。
 - Release には次の成果物を添付します。
