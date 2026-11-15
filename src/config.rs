@@ -1,6 +1,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
+use image::imageops::FilterType;
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_EXPORT_NAME: &str = "{book}_{page:03}";
@@ -8,6 +9,57 @@ pub const DEFAULT_PREFETCH: usize = 2;
 pub const DEFAULT_CACHE_MB: usize = 128;
 
 const CONFIG_FILE: &str = "config.toml";
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScaleFilter {
+    Nearest,
+    #[default]
+    Triangle,
+    CatmullRom,
+    Gaussian,
+    Lanczos3,
+}
+
+impl ScaleFilter {
+    pub const ALL: [ScaleFilter; 5] = [
+        ScaleFilter::Nearest,
+        ScaleFilter::Triangle,
+        ScaleFilter::CatmullRom,
+        ScaleFilter::Gaussian,
+        ScaleFilter::Lanczos3,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ScaleFilter::Nearest => "nearest",
+            ScaleFilter::Triangle => "triangle",
+            ScaleFilter::CatmullRom => "catmull_rom",
+            ScaleFilter::Gaussian => "gaussian",
+            ScaleFilter::Lanczos3 => "lanczos3",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            ScaleFilter::Nearest => "Nearest",
+            ScaleFilter::Triangle => "Triangle",
+            ScaleFilter::CatmullRom => "Catmull-Rom",
+            ScaleFilter::Gaussian => "Gaussian",
+            ScaleFilter::Lanczos3 => "Lanczos3",
+        }
+    }
+
+    pub fn to_filter_type(self) -> FilterType {
+        match self {
+            ScaleFilter::Nearest => FilterType::Nearest,
+            ScaleFilter::Triangle => FilterType::Triangle,
+            ScaleFilter::CatmullRom => FilterType::CatmullRom,
+            ScaleFilter::Gaussian => FilterType::Gaussian,
+            ScaleFilter::Lanczos3 => FilterType::Lanczos3,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -18,6 +70,7 @@ pub struct Config {
     pub export_name: String,
     pub prefetch: usize,
     pub cache_mb: usize,
+    pub scale_filter: ScaleFilter,
     pub debug: bool,
 }
 
@@ -29,6 +82,7 @@ impl Default for Config {
             export_name: DEFAULT_EXPORT_NAME.to_string(),
             prefetch: DEFAULT_PREFETCH,
             cache_mb: DEFAULT_CACHE_MB,
+            scale_filter: ScaleFilter::default(),
             debug: false,
         }
     }
@@ -84,6 +138,7 @@ impl Config {
             "# export_name: {book}, {page}, {page:03}, {name} が使えます\n",
             "# prefetch: 先読み枚数\n",
             "# cache_mb: メモリキャッシュ上限（MiB）。0 は既定値\n",
+            "# scale_filter: nearest / triangle / catmull_rom / gaussian / lanczos3\n",
             "# debug: true で debug.log にログを出力\n",
             "\n",
         ));

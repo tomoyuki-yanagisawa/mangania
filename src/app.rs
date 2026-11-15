@@ -12,8 +12,11 @@ use winit::keyboard::{Key, ModifiersState};
 use winit::window::{Fullscreen, Window, WindowId};
 
 use crate::bindings::{Action, KeyBindings, MouseBindings, MouseInput, WheelDirection};
+use crate::cache::ScaledCache;
 use crate::click::ClickTracker;
 use crate::config::Config;
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+use crate::config::ScaleFilter;
 use crate::debug_log;
 use crate::event::UserEvent;
 use crate::export;
@@ -24,6 +27,8 @@ use crate::open::Entry;
 use crate::prefetch::Prefetch;
 use crate::view;
 use crate::viewer::Viewer;
+
+const SCALED_CACHE_ENTRIES: usize = 4;
 
 pub fn run(path: Option<PathBuf>, prefetch: Option<usize>) -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
@@ -44,6 +49,7 @@ struct App {
     spread: bool,
     scroll: f32,
     last_frame: Vec<u32>,
+    scaled: ScaledCache,
     modifiers: ModifiersState,
     clicks: ClickTracker,
     config: Config,
@@ -72,8 +78,12 @@ impl App {
             }
         }
         debug_log::log(format_args!(
-            "config: spread={} prefetch={} cache_mb={} debug={}",
-            config.spread, config.prefetch, config.cache_mb, config.debug
+            "config: spread={} prefetch={} cache_mb={} scale_filter={} debug={}",
+            config.spread,
+            config.prefetch,
+            config.cache_mb,
+            config.scale_filter.as_str(),
+            config.debug
         ));
         let depth = prefetch.unwrap_or(config.prefetch);
         debug_log::log(format_args!("prefetch depth: {depth}"));
@@ -91,6 +101,7 @@ impl App {
             spread: config.spread,
             scroll: 0.0,
             last_frame: Vec::new(),
+            scaled: ScaledCache::new(SCALED_CACHE_ENTRIES, cache_bytes),
             modifiers: ModifiersState::empty(),
             clicks: ClickTracker::new(),
             config,
@@ -145,6 +156,7 @@ impl App {
                 self.status = None;
                 self.scroll = 0.0;
                 self.last_frame.clear();
+                self.scaled.clear();
                 self.refresh();
             }
             Err(error) => {
@@ -201,6 +213,7 @@ impl App {
         }
         self.error = None;
         self.status = None;
+        self.scaled.clear();
         self.refresh();
     }
 
@@ -222,7 +235,20 @@ impl App {
             }
             viewer.prefetch.clear_pending();
         }
+        self.scaled.clear();
         self.refresh();
+    }
+
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    fn set_scale_filter(&mut self, filter: ScaleFilter) {
+        self.config.scale_filter = filter;
+        self.config.save();
+        self.scaled.clear();
+        self.last_frame.clear();
+        if let Some(menu) = &self.menu {
+            menu.set_filter_checked(filter);
+        }
+        self.request_redraw();
     }
 
     fn handle_click(&mut self, button: MouseButton, event_loop: &ActiveEventLoop) {
@@ -474,16 +500,24 @@ impl App {
             }
         } else if let Some(current) = current {
             let start = std::time::Instant::now();
+            let current_index = page.saturating_sub(1);
+            let next_index = current_index + 1;
             let pages = if self.spread {
-                [next.as_deref(), Some(current.as_ref())]
+                [
+                    next.as_ref().map(|image| (next_index, image.as_ref())),
+                    Some((current_index, current.as_ref())),
+                ]
             } else {
-                [None, Some(current.as_ref())]
+                [None, Some((current_index, current.as_ref()))]
             };
-            view::render_pages(
+            let filter = self.config.scale_filter;
+            view::render_pages_cached(
                 &mut buffer,
                 size.width as usize,
                 size.height as usize,
                 &pages,
+                filter,
+                &mut self.scaled,
             );
 
             self.last_frame.resize(buffer.len(), 0);
@@ -509,6 +543,7 @@ impl App {
         }
 
         let spread = self.spread;
+        let mut evicted = Vec::new();
         for (page, result) in results {
             match result {
                 Ok(image) => {
@@ -520,6 +555,7 @@ impl App {
                         image.as_raw().len()
                     ));
                     viewer.insert(page, image, spread);
+                    evicted.append(&mut viewer.take_evicted_pages());
                 }
                 Err(message) => {
                     eprintln!("mangania: page {}: {message}", page + 1);
@@ -529,11 +565,23 @@ impl App {
             }
         }
 
+        for page in evicted {
+            self.scaled.remove_page(page);
+        }
+
         self.refresh();
     }
 
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     fn handle_menu(&mut self, event: muda::MenuEvent, event_loop: &ActiveEventLoop) {
+        let filter = self
+            .menu
+            .as_ref()
+            .and_then(|menu| menu.filter_for(&event.id));
+        if let Some(filter) = filter {
+            self.set_scale_filter(filter);
+            return;
+        }
         let action = self
             .menu
             .as_ref()
@@ -577,7 +625,7 @@ impl ApplicationHandler<UserEvent> for App {
 
         #[cfg(any(target_os = "windows", target_os = "macos"))]
         if self.menu.is_none() {
-            let menu = MenuBar::new(self.spread, self.proxy.clone());
+            let menu = MenuBar::new(self.spread, self.config.scale_filter, self.proxy.clone());
             menu.attach(&window);
             self.menu = Some(menu);
         }
@@ -621,6 +669,7 @@ impl ApplicationHandler<UserEvent> for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
+                self.scaled.clear();
                 self.update_fullscreen_menu(self.is_fullscreen());
                 self.request_redraw();
             }

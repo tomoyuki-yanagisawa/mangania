@@ -1,8 +1,10 @@
+use std::sync::Arc;
 use std::time::Instant;
 
 use image::RgbaImage;
-use image::imageops::FilterType;
 
+use crate::cache::{ScaledCache, ScaledKey};
+use crate::config::ScaleFilter;
 use crate::debug_log;
 
 const BACKGROUND: u32 = 0x20_20_20;
@@ -29,17 +31,50 @@ pub fn render_spread(
 }
 
 /// Fits the given pages side by side, preserving their relative sizes.
+///
+/// This path does not cache resized pages and uses the default filter. The GUI
+/// uses [`render_pages_cached`] instead.
 pub fn render_pages(buffer: &mut [u32], width: usize, height: usize, pages: &[Option<&RgbaImage>]) {
+    let pages: Vec<_> = pages
+        .iter()
+        .map(|page| page.map(|image| (0, image)))
+        .collect();
+    render_impl(buffer, width, height, &pages, ScaleFilter::Triangle, None);
+}
+
+/// Fits the given pages side by side and reuses resized pages from `cache`.
+///
+/// `pages` holds the page index paired with its decoded image. The index is
+/// part of the cache key so a stale resize cannot be reused after reopening.
+pub fn render_pages_cached(
+    buffer: &mut [u32],
+    width: usize,
+    height: usize,
+    pages: &[Option<(usize, &RgbaImage)>],
+    filter: ScaleFilter,
+    cache: &mut ScaledCache,
+) {
+    render_impl(buffer, width, height, pages, filter, Some(cache));
+}
+
+fn render_impl(
+    buffer: &mut [u32],
+    width: usize,
+    height: usize,
+    pages: &[Option<(usize, &RgbaImage)>],
+    filter: ScaleFilter,
+    mut cache: Option<&mut ScaledCache>,
+) {
     blank(buffer);
     if width == 0 || height == 0 {
         return;
     }
 
-    let total_width: u32 = pages.iter().flatten().map(|image| image.width()).sum();
+    let total_width: u32 = pages.iter().flatten().map(|(_, image)| image.width()).sum();
     let max_height = pages
         .iter()
         .flatten()
-        .map(|image| image.height())
+        .map(|(_, image)| image.height())
         .max()
         .unwrap_or(0);
     if total_width == 0 || max_height == 0 {
@@ -55,16 +90,19 @@ pub fn render_pages(buffer: &mut [u32], width: usize, height: usize, pages: &[Op
     let start_y = (height as isize - draw_height as isize) / 2;
 
     let mut x = start_x;
-    for image in pages.iter().flatten() {
+    for (page, image) in pages.iter().flatten() {
         let (target_width, target_height) = scaled(image.width(), image.height(), scale);
         let y = start_y + (draw_height as isize - target_height as isize) / 2;
         blit_scaled(
             buffer,
             width,
             height,
+            *page,
             image,
             (x, y),
             (target_width, target_height),
+            filter,
+            cache.as_deref_mut(),
         );
         x += target_width as isize;
     }
@@ -77,29 +115,73 @@ fn scaled(width: u32, height: u32, scale: f64) -> (u32, u32) {
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn blit_scaled(
     buffer: &mut [u32],
     width: usize,
     height: usize,
+    page: usize,
     image: &RgbaImage,
     position: (isize, isize),
     target: (u32, u32),
+    filter: ScaleFilter,
+    cache: Option<&mut ScaledCache>,
 ) {
     if target == image.dimensions() {
         blit(buffer, width, height, image, position.0, position.1);
         return;
     }
 
-    let start = Instant::now();
-    let resized = image::imageops::resize(image, target.0, target.1, FilterType::Triangle);
-    debug_log::log(format_args!(
-        "view: resize {}x{} -> {}x{} in {:.1}ms",
-        image.width(),
-        image.height(),
-        target.0,
-        target.1,
-        start.elapsed().as_secs_f64() * 1000.0
-    ));
+    let resized = if let Some(cache) = cache {
+        let key = ScaledKey::new(page, target.0, target.1, filter);
+        if let Some(resized) = cache.get(key) {
+            debug_log::log(format_args!(
+                "view: resize cache hit page={} size={}x{} filter={}",
+                page + 1,
+                target.0,
+                target.1,
+                filter.as_str()
+            ));
+            resized
+        } else {
+            let start = Instant::now();
+            let resized = Arc::new(image::imageops::resize(
+                image,
+                target.0,
+                target.1,
+                filter.to_filter_type(),
+            ));
+            debug_log::log(format_args!(
+                "view: resize {}x{} -> {}x{} filter={} in {:.1}ms",
+                image.width(),
+                image.height(),
+                target.0,
+                target.1,
+                filter.as_str(),
+                start.elapsed().as_secs_f64() * 1000.0
+            ));
+            cache.insert(key, Arc::clone(&resized));
+            resized
+        }
+    } else {
+        let start = Instant::now();
+        let resized = Arc::new(image::imageops::resize(
+            image,
+            target.0,
+            target.1,
+            filter.to_filter_type(),
+        ));
+        debug_log::log(format_args!(
+            "view: resize {}x{} -> {}x{} filter={} in {:.1}ms",
+            image.width(),
+            image.height(),
+            target.0,
+            target.1,
+            filter.as_str(),
+            start.elapsed().as_secs_f64() * 1000.0
+        ));
+        resized
+    };
     blit(buffer, width, height, &resized, position.0, position.1);
 }
 

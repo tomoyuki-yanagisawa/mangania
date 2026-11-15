@@ -1,4 +1,6 @@
 use image::{Rgba, RgbaImage};
+use mangania::cache::ScaledCache;
+use mangania::config::ScaleFilter;
 use mangania::view;
 
 const BACKGROUND: u32 = 0x20_20_20;
@@ -38,4 +40,53 @@ fn centers_a_single_page_in_spread_mode() {
     assert_eq!(buffer[0], BACKGROUND);
     assert_eq!(buffer[2 * 8 + 3], 0xff_0000);
     assert_eq!(buffer[3 * 8 + 7], BACKGROUND);
+}
+
+#[test]
+fn reuses_scaled_pages_by_page_and_filter() {
+    let image = red();
+    let mut buffer = vec![0u32; 8 * 4];
+    let mut cache = ScaledCache::new(4, usize::MAX);
+
+    view::render_pages_cached(
+        &mut buffer,
+        8,
+        4,
+        &[Some((0, &image))],
+        ScaleFilter::Triangle,
+        &mut cache,
+    );
+    assert_eq!(cache.len(), 1);
+    assert_eq!(buffer[0], BACKGROUND);
+    assert_eq!(buffer[2 * 8 + 3], 0xff_0000);
+
+    view::render_pages_cached(
+        &mut buffer,
+        8,
+        4,
+        &[Some((0, &image))],
+        ScaleFilter::Triangle,
+        &mut cache,
+    );
+    assert_eq!(cache.len(), 1);
+
+    view::render_pages_cached(
+        &mut buffer,
+        8,
+        4,
+        &[Some((0, &image))],
+        ScaleFilter::Lanczos3,
+        &mut cache,
+    );
+    assert_eq!(cache.len(), 2);
+
+    view::render_pages_cached(
+        &mut buffer,
+        8,
+        4,
+        &[Some((1, &image))],
+        ScaleFilter::Triangle,
+        &mut cache,
+    );
+    assert_eq!(cache.len(), 3);
 }

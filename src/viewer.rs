@@ -118,6 +118,12 @@ impl Viewer {
         }
     }
 
+    /// Drains pages evicted from the decoded cache so callers can drop any
+    /// resized versions of them as well.
+    pub(crate) fn take_evicted_pages(&mut self) -> Vec<usize> {
+        self.cache.take_evicted()
+    }
+
     /// Returns the current page, the next page in spread mode, and whether the
     /// next page is still loading.
     pub(crate) fn visible_pages(
