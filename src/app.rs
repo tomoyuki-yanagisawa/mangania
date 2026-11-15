@@ -338,6 +338,15 @@ impl App {
             } else {
                 None
             });
+            // Windows keeps the native menu bar visible in borderless
+            // fullscreen, so detach it while fullscreen and restore it after.
+            #[cfg(target_os = "windows")]
+            {
+                if let Some(menu) = &self.menu {
+                    menu.set_native_menu_visible(window, !fullscreen);
+                }
+                window.set_cursor_visible(!fullscreen);
+            }
             window.request_redraw();
         }
         self.update_fullscreen_menu(fullscreen);
