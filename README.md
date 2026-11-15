@@ -217,7 +217,7 @@ JPEG 2000 は対象外です。
 
 ## Windows 7 向けビルド
 
-Windows 7 は Rust の Tier 3 ターゲットです。nightly と `build-std` が必要です。
+Windows 7 は Rust の Tier 3 ターゲットです。nightly と `build-std` が必要です。Release にも `windows7-x86_64` の zip を添付します。
 
 ```sh
 rustup toolchain install nightly
@@ -225,6 +225,7 @@ rustup component add rust-src --toolchain nightly
 cargo +nightly build -Z build-std --target x86_64-win7-windows-msvc --release
 ```
 
+- 通常の `windows-x86_64` 版は Windows 10 以降向けです。Windows 7 ではこの手順か、Release の `windows7-x86_64` を使ってください。
 - MSVC ツールチェーンと、Windows 7 側の Universal CRT 更新が必要です。
 - `winit` は Windows 10 以降の DPI API を動的に読み込み、存在しない場合はフォールバックします。
 - ネイティブメニューは `muda` を使用しています。
@@ -283,18 +284,17 @@ cargo clippy --all-targets
 ## CI / リリース
 
 - Pull Request と main への push で GitHub Actions の CI が走ります。
-  - Ubuntu / macOS / Windows の3環境
-  - `cargo fmt --check`
-  - `cargo clippy --all-targets`
-  - `cargo test`
+  - Ubuntu / macOS / Windows の3環境で `cargo fmt --check` / `cargo clippy --all-targets` / `cargo test`
+  - Windows 7 ターゲット `x86_64-win7-windows-msvc` のビルド確認（nightly + `build-std`）
 - バージョンは `Cargo.toml` の `[package] version` で管理します。
 - `version` を更新し、`cargo check` で `Cargo.lock` も更新して main にマージすると、`v<version>` タグと GitHub Release を作成します。
 - Release には次の成果物を添付します。
-  - `mangania-v<version>-windows-x86_64.zip`
+  - `mangania-v<version>-windows-x86_64.zip`（Windows 10 以降）
+  - `mangania-v<version>-windows7-x86_64.zip`（Windows 7）
   - `mangania-v<version>-macos-<arch>.tar.gz`
   - `mangania-v<version>-linux-x86_64.tar.gz`
 - Release notes は前回タグからのコミットタイトル一覧です。
-- Windows 成果物は標準の `x86_64-pc-windows-msvc` ビルドです。Windows 7 向けは README の `build-std` 手順で別途ビルドします。
+- Windows 10 以降向けは標準の `x86_64-pc-windows-msvc`、Windows 7 向けは nightly + `build-std` の `x86_64-win7-windows-msvc` でビルドします。
 
 ## ドキュメント
 

@@ -48,3 +48,22 @@ jobs:
 
       - name: Test
         run: cargo test --locked
+
+  windows7:
+    name: Build (windows7)
+    runs-on: windows-latest
+    env:
+      RUSTUP_TOOLCHAIN: nightly
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows7
+
+      - name: Build
+        run: cargo build --release --locked -Z build-std --target x86_64-win7-windows-msvc
