@@ -13,6 +13,7 @@
 | [001](001.md) | stable の通常ビルドは Windows 7 で起動しない | Windows 7 / Rust | 2026-11-15 |
 | [002](002.md) | Win7 ターゲットでも `dirs` が `combase.dll` を要求する | Windows 7 / 依存関係 | 2026-11-15 |
 | [003](003.md) | `dirs` 5 系は Win7 ターゲットのビルドで失敗する | Windows 7 / 依存関係 | 2026-11-15 |
+| [005](005.md) | GitHub Actions の Node.js 20 非推奨と action バージョンの確認 | CI / GitHub Actions | 2026-11-16 |
 
 ## まとめ: Windows 7 向けビルド
 
