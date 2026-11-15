@@ -43,7 +43,6 @@ struct App {
     viewer: Option<Viewer>,
     window: Option<Arc<Window>>,
     surface: Option<softbuffer::Surface<Arc<Window>, Arc<Window>>>,
-    spread: bool,
     scroll: f32,
     last_frame: Vec<u32>,
     modifiers: ModifiersState,
@@ -97,7 +96,6 @@ impl App {
             viewer: None,
             window: None,
             surface: None,
-            spread: config.spread,
             scroll: 0.0,
             last_frame: Vec::new(),
             modifiers: ModifiersState::empty(),
@@ -191,8 +189,12 @@ impl App {
         let Some(viewer) = &self.viewer else {
             return;
         };
-        let Some(page) = navigation::step(viewer.current, viewer.pages.len(), self.spread, delta)
-        else {
+        let Some(page) = navigation::step(
+            viewer.current,
+            viewer.pages.len(),
+            self.config.spread,
+            delta,
+        ) else {
             return;
         };
         self.go_to_unaligned(page);
@@ -217,7 +219,7 @@ impl App {
     }
 
     fn go_to_inner(&mut self, page: usize, align: bool) {
-        let spread = self.spread;
+        let spread = self.config.spread;
         self.scroll = 0.0;
         let Some(viewer) = self.viewer.as_mut() else {
             return;
@@ -237,7 +239,6 @@ impl App {
 
     fn set_spread(&mut self, spread: bool) {
         self.scroll = 0.0;
-        self.spread = spread;
         self.config.spread = spread;
         self.config.save();
         self.status = None;
@@ -330,7 +331,7 @@ impl App {
             Action::PrevSingle => self.navigate_single(-1),
             Action::First => self.go_to(0),
             Action::Last => self.go_to(usize::MAX),
-            Action::ToggleSpread => self.set_spread(!self.spread),
+            Action::ToggleSpread => self.set_spread(!self.config.spread),
             Action::SinglePage => self.set_spread(false),
             Action::SpreadPage => self.set_spread(true),
             Action::ToggleFullscreen => {
@@ -435,7 +436,7 @@ impl App {
         let title = if let Some(viewer) = &self.viewer {
             let start = viewer.current + 1;
             let end = (viewer.current + 2).min(viewer.pages.len());
-            let pages = if self.spread && end > start {
+            let pages = if self.config.spread && end > start {
                 format!("{start}-{end}/{}", viewer.pages.len())
             } else {
                 format!("{start}/{}", viewer.pages.len())
@@ -508,7 +509,7 @@ impl App {
 
     fn refresh(&mut self) {
         if let Some(viewer) = self.viewer.as_mut() {
-            viewer.request_current(self.spread);
+            viewer.request_current(self.config.spread);
             viewer.prefetch_around();
         }
         self.update_title();
@@ -539,7 +540,7 @@ impl App {
 
         let (current, next, waiting_for_next) =
             self.viewer.as_ref().map_or((None, None, false), |viewer| {
-                viewer.visible_pages(self.spread)
+                viewer.visible_pages(self.config.spread)
             });
         let page = self
             .viewer
@@ -581,7 +582,7 @@ impl App {
             }
         } else if let Some(current) = current {
             let start = std::time::Instant::now();
-            let pages = if self.spread {
+            let pages = if self.config.spread {
                 [
                     next.as_ref()
                         .map(|(page, image, size)| (*page, image.as_ref(), *size)),
@@ -701,7 +702,11 @@ impl ApplicationHandler<UserEvent> for App {
 
         #[cfg(any(target_os = "windows", target_os = "macos"))]
         if self.menu.is_none() {
-            let menu = MenuBar::new(self.spread, self.config.scale_filter, self.proxy.clone());
+            let menu = MenuBar::new(
+                self.config.spread,
+                self.config.scale_filter,
+                self.proxy.clone(),
+            );
             menu.attach(&window);
             self.menu = Some(menu);
         }
