@@ -136,3 +136,11 @@
 **理由**: 実際に採用した `zip` / `image` / `winit` / `softbuffer` / `muda` / `dirs` / `serde` / `toml` のすべてが同じ基準を満たすわけではない。一方で、これらを自前実装するコストの方が高い。
 
 **影響**: 依存追加時は理由をこの文書に追記する。Stars だけで安全性や保守性を判断しない。
+
+## ADR-017: CI とリリースは GitHub Actions
+
+**決定**: Pull Request と main への push で、Ubuntu / macOS / Windows の3環境で `cargo fmt --check`、`cargo clippy --all-targets`、`cargo test` を実行する。バージョンは `Cargo.toml` の `[package] version` を唯一の情報源とし、main へのバージョン更新マージで `v<version>` タグと GitHub Release を自動作成する。成果物は Windows zip、macOS tar.gz、Linux tar.gz とし、Release notes は前回タグからのコミットタイトル一覧を使う。
+
+**理由**: バージョン管理とリリース作業を手作業から減らし、PR ごとにクロスプラットフォームのテストを回すため。
+
+**影響**: Windows 7 向けの `build-std` 成果物は自動リリースには含めない。必要になった時点で別ジョブとして追加する。タグが既に存在するバージョンではリリースをスキップする。
