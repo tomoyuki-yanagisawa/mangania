@@ -96,8 +96,8 @@ impl Config {
             .as_deref()
             .map(expand_tilde)
             .unwrap_or_else(|| {
-                dirs::picture_dir()
-                    .or_else(dirs::home_dir)
+                picture_dir()
+                    .or_else(home_dir)
                     .unwrap_or_else(|| PathBuf::from("."))
                     .join("MangaNia")
             })
@@ -122,13 +122,45 @@ fn write_default_config(path: &Path) -> io::Result<()> {
 
 fn expand_tilde(path: &Path) -> PathBuf {
     if let Ok(rest) = path.strip_prefix("~")
-        && let Some(home) = dirs::home_dir()
+        && let Some(home) = home_dir()
     {
         return home.join(rest);
     }
     path.to_path_buf()
 }
 
+#[cfg(windows)]
+fn home_dir() -> Option<PathBuf> {
+    std::env::var_os("USERPROFILE").map(PathBuf::from)
+}
+
+#[cfg(not(windows))]
+fn home_dir() -> Option<PathBuf> {
+    dirs::home_dir()
+}
+
+#[cfg(windows)]
+fn config_dir() -> Option<PathBuf> {
+    std::env::var_os("APPDATA")
+        .map(PathBuf::from)
+        .or_else(|| home_dir().map(|home| home.join("AppData").join("Roaming")))
+}
+
+#[cfg(not(windows))]
+fn config_dir() -> Option<PathBuf> {
+    dirs::config_dir()
+}
+
+#[cfg(windows)]
+fn picture_dir() -> Option<PathBuf> {
+    home_dir().map(|home| home.join("Pictures"))
+}
+
+#[cfg(not(windows))]
+fn picture_dir() -> Option<PathBuf> {
+    dirs::picture_dir()
+}
+
 pub(crate) fn config_path(name: &str) -> Option<PathBuf> {
-    dirs::config_dir().map(|base| base.join("mangania").join(name))
+    config_dir().map(|base| base.join("mangania").join(name))
 }

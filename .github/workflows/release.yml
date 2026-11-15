@@ -110,6 +110,7 @@ jobs:
     runs-on: windows-latest
     env:
       RUSTUP_TOOLCHAIN: nightly
+      RUSTFLAGS: -C target-feature=+crt-static
     steps:
       - uses: actions/checkout@v4
 
