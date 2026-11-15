@@ -6,96 +6,6 @@ use image::RgbaImage;
 use crate::config::ScaleFilter;
 use crate::debug_log;
 
-pub struct Cache {
-    max_pages: usize,
-    max_bytes: usize,
-    used_bytes: usize,
-    entries: HashMap<usize, Arc<RgbaImage>>,
-    order: VecDeque<usize>,
-    evicted: Vec<usize>,
-}
-
-impl Cache {
-    pub fn new(max_pages: usize, max_bytes: usize) -> Self {
-        Self {
-            max_pages,
-            max_bytes,
-            used_bytes: 0,
-            entries: HashMap::new(),
-            order: VecDeque::new(),
-            evicted: Vec::new(),
-        }
-    }
-
-    pub fn get(&self, page: usize) -> Option<Arc<RgbaImage>> {
-        self.entries.get(&page).cloned()
-    }
-
-    pub fn contains(&self, page: usize) -> bool {
-        self.entries.contains_key(&page)
-    }
-
-    pub fn insert(&mut self, page: usize, image: Arc<RgbaImage>, keep: &[usize]) -> bool {
-        let bytes = image.as_raw().len();
-        if bytes > self.max_bytes && !keep.contains(&page) {
-            debug_log::log(format_args!(
-                "cache: skip page={} bytes={} over limit={}",
-                page + 1,
-                bytes,
-                self.max_bytes
-            ));
-            return false;
-        }
-
-        if let Some(old) = self.entries.insert(page, image) {
-            self.used_bytes = self.used_bytes.saturating_sub(old.as_raw().len());
-        } else {
-            self.order.push_back(page);
-        }
-        self.used_bytes += bytes;
-
-        while (self.order.len() > self.max_pages || self.used_bytes > self.max_bytes)
-            && self.entries.len() > 1
-            && self.entries.keys().any(|page| !keep.contains(page))
-        {
-            let Some(oldest) = self.order.pop_front() else {
-                break;
-            };
-            if keep.contains(&oldest) {
-                self.order.push_back(oldest);
-                continue;
-            }
-            if let Some(image) = self.entries.remove(&oldest) {
-                let bytes = image.as_raw().len();
-                self.used_bytes = self.used_bytes.saturating_sub(bytes);
-                self.evicted.push(oldest);
-                debug_log::log(format_args!(
-                    "cache: evict page={} bytes={}",
-                    oldest + 1,
-                    bytes
-                ));
-            }
-        }
-
-        let retained = self.entries.contains_key(&page);
-        debug_log::log(format_args!(
-            "cache: insert page={} bytes={} used={}/{} entries={} keep={:?} retained={retained}",
-            page + 1,
-            bytes,
-            self.used_bytes,
-            self.max_bytes,
-            self.entries.len(),
-            keep
-        ));
-        retained
-    }
-
-    /// Drains the pages evicted since the last call.
-    pub fn take_evicted(&mut self) -> Vec<usize> {
-        std::mem::take(&mut self.evicted)
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ScaledKey {
     pub page: usize,
@@ -115,11 +25,12 @@ impl ScaledKey {
     }
 }
 
-/// Bounded cache for resized pages.
+/// Bounded cache for display-sized page images.
 ///
-/// Entries are keyed by page, target size and filter so a plain redraw can reuse
-/// the previous resize. The byte budget keeps the cache from growing with the
-/// window size or with the number of page/filter combinations.
+/// Entries are keyed by page, target size and filter. Full decoded pages are
+/// never stored here; callers resize first and keep only the display result.
+/// Visible pages are protected from eviction so drawing does not lose them
+/// under memory pressure.
 pub struct ScaledCache {
     max_entries: usize,
     max_bytes: usize,
@@ -143,11 +54,37 @@ impl ScaledCache {
         self.entries.get(&key).cloned()
     }
 
-    pub fn insert(&mut self, key: ScaledKey, image: Arc<RgbaImage>) -> bool {
+    /// Returns the largest cached image for a page at the given filter. A page
+    /// can have a window preview and an exact spread target at the same time.
+    pub fn get_page(&self, page: usize, filter: ScaleFilter) -> Option<Arc<RgbaImage>> {
+        self.entries
+            .iter()
+            .filter(|(key, _)| key.page == page && key.filter == filter)
+            .max_by_key(|(_, image)| u64::from(image.width()) * u64::from(image.height()))
+            .map(|(_, image)| Arc::clone(image))
+    }
+
+    pub fn contains_page(&self, page: usize, filter: ScaleFilter) -> bool {
+        self.entries
+            .keys()
+            .any(|key| key.page == page && key.filter == filter)
+    }
+
+    /// Inserts a display-sized image. Pages in `keep` are retained even when
+    /// the byte budget is already full. When eviction is needed, entries whose
+    /// page is farthest from `current` are removed first.
+    pub fn insert(
+        &mut self,
+        key: ScaledKey,
+        image: Arc<RgbaImage>,
+        keep: &[usize],
+        current: usize,
+    ) -> bool {
         let bytes = image.as_raw().len();
-        if self.max_entries == 0 || bytes > self.max_bytes {
+        let protected = keep.contains(&key.page);
+        if (self.max_entries == 0 && !protected) || (bytes > self.max_bytes && !protected) {
             debug_log::log(format_args!(
-                "scaled cache: skip page={} size={}x{} filter={} bytes={} over limit={}",
+                "resized cache: skip page={} size={}x{} filter={} bytes={} over limit={}",
                 key.page + 1,
                 key.width,
                 key.height,
@@ -170,15 +107,17 @@ impl ScaledCache {
         while (self.order.len() > self.max_entries || self.used_bytes > self.max_bytes)
             && self.entries.len() > 1
         {
-            let Some(oldest) = self.order.pop_front() else {
+            let Some((oldest, index)) = self.eviction_candidate(current, keep) else {
                 break;
             };
+            self.order.remove(index);
             if let Some(image) = self.entries.remove(&oldest) {
                 let bytes = image.as_raw().len();
                 self.used_bytes = self.used_bytes.saturating_sub(bytes);
                 debug_log::log(format_args!(
-                    "scaled cache: evict page={} size={}x{} filter={} bytes={}",
+                    "resized cache: evict page={} distance={} size={}x{} filter={} bytes={}",
                     oldest.page + 1,
+                    oldest.page.abs_diff(current),
                     oldest.width,
                     oldest.height,
                     oldest.filter.as_str(),
@@ -189,7 +128,7 @@ impl ScaledCache {
 
         let retained = self.entries.contains_key(&key);
         debug_log::log(format_args!(
-            "scaled cache: insert page={} size={}x{} filter={} bytes={} used={}/{} entries={} retained={retained}",
+            "resized cache: insert page={} size={}x{} filter={} bytes={} used={}/{} entries={} current={} keep={:?} retained={retained}",
             key.page + 1,
             key.width,
             key.height,
@@ -197,30 +136,44 @@ impl ScaledCache {
             bytes,
             self.used_bytes,
             self.max_bytes,
-            self.entries.len()
+            self.entries.len(),
+            current + 1,
+            keep
         ));
         retained
     }
 
-    pub fn remove_page(&mut self, page: usize) {
-        let keys: Vec<ScaledKey> = self
-            .entries
-            .keys()
-            .copied()
-            .filter(|key| key.page == page)
-            .collect();
-        for key in keys {
-            if let Some(image) = self.entries.remove(&key) {
-                self.used_bytes = self.used_bytes.saturating_sub(image.as_raw().len());
+    /// Picks the farthest non-protected entry from `current`.
+    ///
+    /// Equal distances prefer pages behind the current page so near-future
+    /// pages survive longer. Remaining ties use the older insertion.
+    fn eviction_candidate(&self, current: usize, keep: &[usize]) -> Option<(ScaledKey, usize)> {
+        let mut best: Option<(ScaledKey, usize, usize, bool)> = None;
+        for (index, key) in self.order.iter().enumerate() {
+            if keep.contains(&key.page) || !self.entries.contains_key(key) {
+                continue;
+            }
+            let distance = key.page.abs_diff(current);
+            let ahead = key.page > current;
+            let replace = match best {
+                None => true,
+                Some((_, best_index, best_distance, best_ahead)) => {
+                    distance > best_distance
+                        || (distance == best_distance && ahead != best_ahead && !ahead)
+                        || (distance == best_distance && ahead == best_ahead && index < best_index)
+                }
+            };
+            if replace {
+                best = Some((*key, index, distance, ahead));
             }
         }
-        self.order.retain(|key| key.page != page);
+        best.map(|(key, index, _, _)| (key, index))
     }
 
     pub fn clear(&mut self) {
         if !self.entries.is_empty() {
             debug_log::log(format_args!(
-                "scaled cache: clear entries={} used={}",
+                "resized cache: clear entries={} used={}",
                 self.entries.len(),
                 self.used_bytes
             ));

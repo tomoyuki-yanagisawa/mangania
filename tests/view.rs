@@ -43,6 +43,15 @@ fn centers_a_single_page_in_spread_mode() {
 }
 
 #[test]
+fn fits_previews_inside_the_viewport() {
+    assert_eq!(view::fit(2, 1, 8, 8), (8, 4));
+    assert_eq!(view::fit(1, 2, 8, 8), (4, 8));
+    assert_eq!(view::fit(8, 8, 4, 2), (2, 2));
+    assert_eq!(view::fit(0, 100, 8, 8), (0, 0));
+    assert_eq!(view::fit(100, 100, 0, 8), (0, 0));
+}
+
+#[test]
 fn reuses_scaled_pages_by_page_and_filter() {
     let image = red();
     let mut buffer = vec![0u32; 8 * 4];
@@ -52,8 +61,9 @@ fn reuses_scaled_pages_by_page_and_filter() {
         &mut buffer,
         8,
         4,
-        &[Some((0, &image))],
+        &[Some((0, &image, image.dimensions()))],
         ScaleFilter::Triangle,
+        0,
         &mut cache,
     );
     assert_eq!(cache.len(), 1);
@@ -64,8 +74,9 @@ fn reuses_scaled_pages_by_page_and_filter() {
         &mut buffer,
         8,
         4,
-        &[Some((0, &image))],
+        &[Some((0, &image, image.dimensions()))],
         ScaleFilter::Triangle,
+        0,
         &mut cache,
     );
     assert_eq!(cache.len(), 1);
@@ -74,8 +85,9 @@ fn reuses_scaled_pages_by_page_and_filter() {
         &mut buffer,
         8,
         4,
-        &[Some((0, &image))],
+        &[Some((0, &image, image.dimensions()))],
         ScaleFilter::Lanczos3,
+        0,
         &mut cache,
     );
     assert_eq!(cache.len(), 2);
@@ -84,9 +96,62 @@ fn reuses_scaled_pages_by_page_and_filter() {
         &mut buffer,
         8,
         4,
-        &[Some((1, &image))],
+        &[Some((1, &image, image.dimensions()))],
         ScaleFilter::Triangle,
+        0,
         &mut cache,
     );
     assert_eq!(cache.len(), 3);
+}
+
+#[test]
+fn spread_layout_uses_original_dimensions_not_preview_dimensions() {
+    // Both previews are fitted to the window, so their dimensions no longer
+    // share a common scale. The spread must still lay them out by 1:1 and 1:2
+    // original aspect ratios.
+    let left = RgbaImage::from_pixel(1, 1, Rgba([255, 0, 0, 255]));
+    let right = RgbaImage::from_pixel(1, 2, Rgba([0, 0, 255, 255]));
+    let left_preview = RgbaImage::from_pixel(8, 8, Rgba([255, 0, 0, 255]));
+    let right_preview = RgbaImage::from_pixel(4, 8, Rgba([0, 0, 255, 255]));
+    let mut buffer = vec![0u32; 8 * 8];
+    let mut cache = ScaledCache::new(4, usize::MAX);
+
+    view::render_pages_cached(
+        &mut buffer,
+        8,
+        8,
+        &[
+            Some((0, &left_preview, left.dimensions())),
+            Some((1, &right_preview, right.dimensions())),
+        ],
+        ScaleFilter::Triangle,
+        0,
+        &mut cache,
+    );
+
+    assert_eq!(buffer[0], BACKGROUND);
+    assert_eq!(buffer[4], 0x00_00ff);
+    assert_eq!(buffer[5 * 8 + 4], 0x00_00ff);
+    assert_eq!(buffer[2 * 8], 0xff_0000);
+    assert_eq!(buffer[5 * 8 + 3], 0xff_0000);
+}
+
+#[test]
+fn does_not_cache_an_image_that_already_matches_the_target() {
+    let image = RgbaImage::from_pixel(8, 4, Rgba([255, 0, 0, 255]));
+    let mut buffer = vec![0u32; 8 * 4];
+    let mut cache = ScaledCache::new(4, usize::MAX);
+
+    view::render_pages_cached(
+        &mut buffer,
+        8,
+        4,
+        &[Some((0, &image, image.dimensions()))],
+        ScaleFilter::Triangle,
+        0,
+        &mut cache,
+    );
+
+    assert!(cache.is_empty());
+    assert_eq!(buffer[2 * 8 + 3], 0xff_0000);
 }

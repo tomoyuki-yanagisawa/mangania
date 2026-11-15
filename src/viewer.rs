@@ -4,9 +4,31 @@ use std::sync::Arc;
 
 use image::RgbaImage;
 
-use crate::cache::Cache;
+use crate::cache::{ScaledCache, ScaledKey};
+use crate::config::ScaleFilter;
+use crate::debug_log;
 use crate::navigation;
 use crate::prefetch::Prefetch;
+use crate::view;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Viewport {
+    width: u32,
+    height: u32,
+    filter: ScaleFilter,
+}
+
+impl Viewport {
+    pub(crate) fn new(width: u32, height: u32, filter: ScaleFilter) -> Self {
+        Self {
+            width,
+            height,
+            filter,
+        }
+    }
+}
+
+pub(crate) type VisiblePage = (usize, Arc<RgbaImage>, (u32, u32));
 
 pub(crate) struct Viewer {
     pub(crate) file_name: String,
@@ -14,10 +36,13 @@ pub(crate) struct Viewer {
     pub(crate) pages: Vec<usize>,
     pub(crate) current: usize,
     pub(crate) prefetch: Prefetch,
-    pub(crate) cache: Cache,
+    pub(crate) cache: ScaledCache,
     pub(crate) errors: HashMap<usize, String>,
-    uncached: HashSet<usize>,
+    previews: HashMap<usize, ScaledKey>,
+    sizes: HashMap<usize, (u32, u32)>,
+    attempted: HashSet<usize>,
     depth: usize,
+    viewport: Viewport,
 }
 
 impl Viewer {
@@ -28,17 +53,22 @@ impl Viewer {
         prefetch: Prefetch,
         depth: usize,
         cache_bytes: usize,
+        viewport: Viewport,
     ) -> Self {
+        let max_entries = depth.saturating_add(2).saturating_mul(2).max(4);
         Self {
             file_name,
             path,
             pages,
             current: 0,
             prefetch,
-            cache: Cache::new(depth.saturating_add(2), cache_bytes),
+            cache: ScaledCache::new(max_entries, cache_bytes),
             errors: HashMap::new(),
-            uncached: HashSet::new(),
+            previews: HashMap::new(),
+            sizes: HashMap::new(),
+            attempted: HashSet::new(),
             depth,
+            viewport,
         }
     }
 
@@ -69,13 +99,31 @@ impl Viewer {
         self.current -= self.current % 2;
     }
 
+    /// Changes the display target. The resized cache is cleared so pages are
+    /// decoded again at the new window size or filter.
+    pub(crate) fn set_viewport(&mut self, width: u32, height: u32, filter: ScaleFilter) -> bool {
+        let viewport = Viewport::new(width, height, filter);
+        if self.viewport == viewport {
+            return false;
+        }
+        self.viewport = viewport;
+        self.cache.clear();
+        self.previews.clear();
+        self.attempted.clear();
+        debug_log::log(format_args!(
+            "viewer: viewport {}x{} filter={} cache cleared",
+            width,
+            height,
+            filter.as_str()
+        ));
+        true
+    }
+
     pub(crate) fn request_current(&mut self, spread: bool) {
         let current = self.current;
-        self.uncached.remove(&current);
         self.request(current, true);
         if spread && current + 1 < self.pages.len() {
-            self.uncached.remove(&(current + 1));
-            self.request(current + 1, false);
+            self.request(current + 1, true);
         }
     }
 
@@ -93,45 +141,91 @@ impl Viewer {
     }
 
     fn request(&mut self, page: usize, urgent: bool) {
-        if page >= self.pages.len() || self.cache.contains(page) || self.errors.contains_key(&page)
-        {
+        if page >= self.pages.len() || self.has_preview(page) || self.errors.contains_key(&page) {
             return;
         }
-        if !urgent && self.uncached.contains(&page) {
+        if !urgent && self.attempted.contains(&page) {
             return;
         }
         let entry = self.pages[page];
         self.prefetch.request(page, entry, urgent);
     }
 
-    pub(crate) fn insert(&mut self, page: usize, image: Arc<RgbaImage>, spread: bool) {
-        let next = self.current.saturating_add(1);
-        let keep = if spread && next < self.pages.len() {
-            [self.current, next]
-        } else {
-            [self.current, self.current]
-        };
-        if self.cache.insert(page, image, &keep) || keep.contains(&page) {
-            self.uncached.remove(&page);
-        } else {
-            self.uncached.insert(page);
+    /// Resizes an arrived decoded page to the current window preview, caches
+    /// the display image and drops the decoded original.
+    pub(crate) fn insert_decoded(&mut self, page: usize, image: Arc<RgbaImage>) {
+        self.attempted.insert(page);
+        let (width, height) = image.dimensions();
+        let target = view::fit(
+            width,
+            height,
+            self.viewport.width as usize,
+            self.viewport.height as usize,
+        );
+        if target.0 == 0 || target.1 == 0 {
+            self.previews.remove(&page);
+            debug_log::log(format_args!(
+                "viewer: skip empty preview page={} source={}x{}",
+                page + 1,
+                width,
+                height
+            ));
+            return;
         }
+
+        self.sizes.insert(page, (width, height));
+        let preview = if target == image.dimensions() {
+            image
+        } else {
+            view::resized(&image, target, self.viewport.filter)
+        };
+        let preview_size = preview.dimensions();
+        let key = ScaledKey::new(page, preview_size.0, preview_size.1, self.viewport.filter);
+        let next = self.current.saturating_add(1);
+        let keep = [self.current, next];
+        let retained = self.cache.insert(key, preview, &keep, self.current);
+        if retained {
+            self.previews.insert(page, key);
+        } else {
+            self.previews.remove(&page);
+        }
+        debug_log::log(format_args!(
+            "viewer: preview page={} {}x{} -> {}x{} filter={} cached={retained}",
+            page + 1,
+            width,
+            height,
+            preview_size.0,
+            preview_size.1,
+            self.viewport.filter.as_str()
+        ));
     }
 
-    /// Drains pages evicted from the decoded cache so callers can drop any
-    /// resized versions of them as well.
-    pub(crate) fn take_evicted_pages(&mut self) -> Vec<usize> {
-        self.cache.take_evicted()
+    fn has_preview(&self, page: usize) -> bool {
+        self.previews
+            .get(&page)
+            .is_some_and(|key| self.cache.get(*key).is_some())
+    }
+
+    pub(crate) fn has_page(&self, page: usize) -> bool {
+        self.has_preview(page)
+    }
+
+    fn visible(&self, page: usize) -> Option<VisiblePage> {
+        let key = *self.previews.get(&page)?;
+        let image = self.cache.get(key)?;
+        let size = *self.sizes.get(&page)?;
+        Some((page, image, size))
     }
 
     /// Returns the current page, the next page in spread mode, and whether the
-    /// next page is still loading.
+    /// next page is still loading. Images are window previews; original page
+    /// dimensions are returned separately for spread layout.
     pub(crate) fn visible_pages(
         &self,
         spread: bool,
-    ) -> (Option<Arc<RgbaImage>>, Option<Arc<RgbaImage>>, bool) {
+    ) -> (Option<VisiblePage>, Option<VisiblePage>, bool) {
         let next = if spread {
-            self.cache.get(self.current + 1)
+            self.visible(self.current + 1)
         } else {
             None
         };
@@ -139,6 +233,6 @@ impl Viewer {
             && self.current + 1 < self.pages.len()
             && next.is_none()
             && !self.errors.contains_key(&(self.current + 1));
-        (self.cache.get(self.current), next, waiting)
+        (self.visible(self.current), next, waiting)
     }
 }
