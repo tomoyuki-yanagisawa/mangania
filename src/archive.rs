@@ -84,7 +84,7 @@ fn is_page_name(name: &str) -> bool {
         .and_then(|e| e.to_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
-    matches!(extension.as_str(), "jpg" | "jpeg" | "png" | "webp")
+    matches!(extension.as_str(), "jpg" | "jpeg" | "png" | "webp" | "bmp")
 }
 
 fn is_safe_name(name: &str) -> bool {

@@ -101,7 +101,7 @@ save_page = ["double_left"]
 
 ## 5. 対応形式と制約
 
-- 対応形式: JPEG（ベースライン / プログレッシブ）、PNG、WebP。
+- 対応形式: JPEG（ベースライン / プログレッシブ）、PNG、WebP、BMP。
 - 対象外: RAR、7z、JPEG 2000、JPEG XL、AVIF、GIF。
 - 読み方向は右→左固定。
 - 設定画面、閲覧位置の保存、表紙の単独表示は未実装。

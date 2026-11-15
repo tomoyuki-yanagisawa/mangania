@@ -1,5 +1,6 @@
 mod common;
 
+use image::ImageFormat;
 use mangania::config::Config;
 use mangania::export;
 
@@ -39,6 +40,24 @@ fn saves_original_entry_bytes() {
     let output = export::save_current_page(&archive_path, 0, &config).unwrap();
 
     assert_eq!(output, out_dir.join("book_001_001.png"));
+    assert_eq!(std::fs::read(&output).unwrap(), image);
+    common::cleanup(&archive_path);
+}
+
+#[test]
+fn saves_original_bmp_bytes_and_extension() {
+    let image = common::encoded(ImageFormat::Bmp);
+    let archive_path = common::temp_zip(&[("001.bmp", image.as_slice())]);
+    let out_dir = archive_path.parent().unwrap().join("out");
+    let config = Config {
+        export_dir: Some(out_dir.clone()),
+        export_name: "{book}_{page:03}_{name}".to_string(),
+        ..Config::default()
+    };
+
+    let output = export::save_current_page(&archive_path, 0, &config).unwrap();
+
+    assert_eq!(output, out_dir.join("book_001_001.bmp"));
     assert_eq!(std::fs::read(&output).unwrap(), image);
     common::cleanup(&archive_path);
 }

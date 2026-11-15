@@ -25,9 +25,9 @@
 
 **影響**: RAR / 7z は対象外。ZIP64 や破損データの扱いは crate と自前の上限チェックに依存する。
 
-## ADR-003: 画像は image crate、JPEG / PNG / WebP のみ
+## ADR-003: 画像は image crate、JPEG / PNG / WebP / BMP のみ
 
-**決定**: `image` crate の JPEG / PNG / WebP デコーダを使い、デコード結果を `RgbaImage` に統一する。
+**決定**: `image` crate の JPEG / PNG / WebP / BMP デコーダを使い、デコード結果を `RgbaImage` に統一する。
 
 **理由**: まず漫画ビューアとして必要な形式を確実に扱う。外部 C デコーダの FFI を持たずに済む。
 
