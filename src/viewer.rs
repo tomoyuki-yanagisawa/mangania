@@ -8,8 +8,6 @@ use crate::cache::Cache;
 use crate::navigation;
 use crate::prefetch::Prefetch;
 
-const MAX_CACHE_BYTES: usize = 128 * 1024 * 1024;
-
 pub(crate) struct Viewer {
     pub(crate) file_name: String,
     pub(crate) path: PathBuf,
@@ -28,6 +26,7 @@ impl Viewer {
         pages: Vec<usize>,
         prefetch: Prefetch,
         depth: usize,
+        cache_bytes: usize,
     ) -> Self {
         Self {
             file_name,
@@ -35,7 +34,7 @@ impl Viewer {
             pages,
             current: 0,
             prefetch,
-            cache: Cache::new(depth + 2, MAX_CACHE_BYTES),
+            cache: Cache::new(depth.saturating_add(2), cache_bytes),
             errors: HashMap::new(),
             depth,
         }

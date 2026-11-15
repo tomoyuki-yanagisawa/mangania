@@ -27,11 +27,15 @@
 spread = false
 export_dir = "~/Pictures/MangaNia"
 export_name = "{book}_{page:03}"
+prefetch = 2
+cache_mb = 128
 ```
 
 - `spread = false`（1ページ表示）が既定。
 - `export_dir` の省略時は `~/Pictures/MangaNia`。
 - `export_name` の省略時は `{book}_{page:03}`。
+- `prefetch` の省略時は 2。`--prefetch` が指定された場合は CLI を優先する。
+- `cache_mb` の省略時は 128。`0` も 128 として扱う。
 - 同名ファイルは上書きする。
 - 保存するのは現在ページのみで、ZIP 内の元画像バイト列をそのまま使う。
 
@@ -92,8 +96,9 @@ save_page = ["double_left"]
 
 ## 4. パフォーマンスとリソース
 
-- 先読み枚数の既定は 2。
-- キャッシュは `先読み枚数 + 2` ページ、最大 128MiB。
+- 先読み枚数の既定は 2。`config.toml` の `prefetch` で変更できる。
+- キャッシュ上限の既定は 128MiB。`config.toml` の `cache_mb` で変更できる。
+- キャッシュ枚数は `prefetch + 2`。
 - 現在ページは常にキャッシュに残す。
 - ZIP 読み出しとデコードは UI スレッドで行わない。
 - ディスクキャッシュは使わない。

@@ -24,17 +24,18 @@ use crate::prefetch::Prefetch;
 use crate::view;
 use crate::viewer::Viewer;
 
-pub fn run(path: Option<PathBuf>, prefetch_depth: usize) -> Result<(), Box<dyn Error>> {
+pub fn run(path: Option<PathBuf>, prefetch: Option<usize>) -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let proxy = event_loop.create_proxy();
-    event_loop.run_app(&mut App::new(path, prefetch_depth, proxy))?;
+    event_loop.run_app(&mut App::new(path, prefetch, proxy))?;
     Ok(())
 }
 
 struct App {
     initial_path: Option<PathBuf>,
     depth: usize,
+    cache_bytes: usize,
     proxy: EventLoopProxy<UserEvent>,
     viewer: Option<Viewer>,
     window: Option<Arc<Window>>,
@@ -54,13 +55,20 @@ struct App {
 }
 
 impl App {
-    fn new(initial_path: Option<PathBuf>, depth: usize, proxy: EventLoopProxy<UserEvent>) -> Self {
+    fn new(
+        initial_path: Option<PathBuf>,
+        prefetch: Option<usize>,
+        proxy: EventLoopProxy<UserEvent>,
+    ) -> Self {
         let config = Config::load();
+        let depth = prefetch.unwrap_or(config.prefetch);
+        let cache_bytes = config.cache_bytes();
         let keys = KeyBindings::load();
         let mouse = MouseBindings::load();
         Self {
             initial_path,
             depth,
+            cache_bytes,
             proxy,
             viewer: None,
             window: None,
@@ -104,6 +112,7 @@ impl App {
                     pages,
                     prefetch,
                     self.depth,
+                    self.cache_bytes,
                 ));
                 self.error = None;
                 self.status = None;

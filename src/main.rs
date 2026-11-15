@@ -11,7 +11,7 @@ usage: mangania [--prefetch N] [--list | --check | --render-page PAGE OUTPUT] [A
   --list             print indexed pages and exit
   --check            decode every page and report errors
   --render-page N O  write page N (1-based) to image file O
-  --prefetch N       number of pages to prefetch ahead (default 2)
+  --prefetch N       number of pages to prefetch ahead (overrides config.toml)
   --help             show this help";
 
 fn main() {

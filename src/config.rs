@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_EXPORT_NAME: &str = "{book}_{page:03}";
+pub const DEFAULT_PREFETCH: usize = 2;
+pub const DEFAULT_CACHE_MB: usize = 128;
 
 const CONFIG_FILE: &str = "config.toml";
 
@@ -14,6 +16,8 @@ pub struct Config {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub export_dir: Option<PathBuf>,
     pub export_name: String,
+    pub prefetch: usize,
+    pub cache_mb: usize,
 }
 
 impl Default for Config {
@@ -22,6 +26,8 @@ impl Default for Config {
             spread: false,
             export_dir: None,
             export_name: DEFAULT_EXPORT_NAME.to_string(),
+            prefetch: DEFAULT_PREFETCH,
+            cache_mb: DEFAULT_CACHE_MB,
         }
     }
 }
@@ -73,6 +79,15 @@ impl Config {
                     .unwrap_or_else(|| PathBuf::from("."))
                     .join("MangaNia")
             })
+    }
+
+    pub fn cache_bytes(&self) -> usize {
+        let cache_mb = if self.cache_mb == 0 {
+            DEFAULT_CACHE_MB
+        } else {
+            self.cache_mb
+        };
+        cache_mb.saturating_mul(1024 * 1024)
     }
 }
 
