@@ -25,3 +25,46 @@ fn indexes_images_in_natural_order_and_skips_unsafe_entries() {
 
     common::cleanup(&path);
 }
+
+#[test]
+fn reports_shortcuts_instead_of_zip_errors() {
+    let path = common::temp_zip(&[("1.jpg", b"one".as_slice())]);
+    let shortcut = path.with_extension("lnk");
+    std::fs::rename(&path, &shortcut).unwrap();
+
+    let error = match Archive::open(&shortcut) {
+        Ok(_) => panic!("expected shortcut error"),
+        Err(error) => error,
+    };
+    assert!(
+        error.to_ascii_lowercase().contains("shortcut"),
+        "unexpected error: {error}"
+    );
+
+    common::cleanup(&shortcut);
+}
+
+#[cfg(windows)]
+#[test]
+fn resolves_windows_shortcut_to_zip() {
+    let zip = common::temp_zip(&[("1.jpg", b"one".as_slice())]);
+    let shortcut = zip.with_extension("lnk");
+    let script = format!(
+        "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}'); \
+         $s.TargetPath='{}'; $s.Save()",
+        shortcut.display(),
+        zip.display()
+    );
+    let status = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let mut archive = Archive::open(&shortcut).unwrap();
+    assert_eq!(archive.names, ["1.jpg"]);
+    let page = archive.pages[0];
+    assert_eq!(archive.read_index(page).unwrap(), b"one");
+
+    common::cleanup(&zip);
+}

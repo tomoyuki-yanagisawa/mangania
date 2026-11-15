@@ -1103,6 +1103,7 @@ dependencies = [
  "serde",
  "softbuffer",
  "toml 1.2.1+spec-1.1.0",
+ "windows-sys 0.52.0",
  "winit",
  "winresource",
  "zip",
