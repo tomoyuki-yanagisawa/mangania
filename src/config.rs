@@ -1,5 +1,6 @@
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use image::imageops::FilterType;
 use serde::{Deserialize, Serialize};
@@ -96,8 +97,8 @@ impl Config {
     }
 
     pub fn load_or_create_from(path: &Path) -> Self {
-        if !path.exists()
-            && let Err(error) = write_default_config(path)
+        if let Err(error) = write_default_config(path)
+            && error.kind() != io::ErrorKind::AlreadyExists
         {
             eprintln!("mangania: write default config {}: {error}", path.display());
         }
@@ -105,9 +106,19 @@ impl Config {
     }
 
     pub fn load_from(path: &Path) -> Self {
-        std::fs::read_to_string(path)
-            .map(|text| Self::parse(&text))
-            .unwrap_or_default()
+        match std::fs::read_to_string(path) {
+            Ok(text) => match toml::from_str(&text) {
+                Ok(config) => config,
+                Err(error) => {
+                    eprintln!("mangania: parse config {}: {error}", path.display());
+                    Self::default()
+                }
+            },
+            Err(error) => {
+                eprintln!("mangania: read config {}: {error}", path.display());
+                Self::default()
+            }
+        }
     }
 
     pub fn save(&self) {
@@ -120,10 +131,8 @@ impl Config {
     }
 
     pub fn save_to(&self, path: &Path) -> io::Result<()> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(path, self.to_toml())
+        validate_existing::<Config>(path)?;
+        atomic_write(path, self.to_toml().as_bytes())
     }
 
     pub fn parse(text: &str) -> Self {
@@ -172,10 +181,59 @@ impl Config {
 }
 
 fn write_default_config(path: &Path) -> io::Result<()> {
-    if let Some(parent) = path.parent() {
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(path, Config::default().to_toml())
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?;
+    file.write_all(Config::default().to_toml().as_bytes())
+}
+
+fn validate_existing<T: for<'de> Deserialize<'de>>(path: &Path) -> io::Result<()> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => toml::from_str::<T>(&text)
+            .map(|_| ())
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
+    static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let (temp, mut file) = loop {
+        let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+        let temp = parent.join(format!(".mangania-{}-{id}.tmp", std::process::id()));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)
+        {
+            Ok(file) => break (temp, file),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    };
+    let result = (|| {
+        if let Ok(metadata) = std::fs::metadata(path) {
+            file.set_permissions(metadata.permissions())?;
+        }
+        file.write_all(contents)?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&temp, path)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(temp);
+    }
+    result
 }
 
 fn expand_tilde(path: &Path) -> PathBuf {

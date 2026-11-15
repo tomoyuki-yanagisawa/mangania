@@ -127,3 +127,31 @@ fn round_trips_config_file() {
 
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn saves_display_mode_and_preserves_other_settings() {
+    let dir = std::env::temp_dir().join(format!("mangania-config-state-{}", std::process::id()));
+    let path = dir.join("config.toml");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(&path, "spread = false\nprefetch = 7\n").unwrap();
+    let mut config = Config::load_or_create_from(&path);
+    config.spread = true;
+    config.save_to(&path).unwrap();
+    let loaded = Config::load_or_create_from(&path);
+    assert!(loaded.spread);
+    assert_eq!(loaded.prefetch, 7);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn invalid_files_are_not_overwritten() {
+    let dir = std::env::temp_dir().join(format!("mangania-config-invalid-{}", std::process::id()));
+    let path = dir.join("config.toml");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(&path, "spread = invalid\n").unwrap();
+    let config = Config::load_or_create_from(&path);
+    assert_eq!(config, Config::default());
+    assert!(config.save_to(&path).is_err());
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "spread = invalid\n");
+    std::fs::remove_dir_all(dir).unwrap();
+}

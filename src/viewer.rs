@@ -30,6 +30,27 @@ impl Viewport {
 
 pub(crate) type VisiblePage = (usize, Arc<RgbaImage>, (u32, u32));
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum FrameState {
+    Failed,
+    Loading,
+    Ready,
+}
+
+pub(crate) fn frame_state(
+    current: bool,
+    current_failed: bool,
+    waiting_for_next: bool,
+) -> FrameState {
+    if current_failed {
+        FrameState::Failed
+    } else if !current || waiting_for_next {
+        FrameState::Loading
+    } else {
+        FrameState::Ready
+    }
+}
+
 pub(crate) struct Viewer {
     pub(crate) file_name: String,
     pub(crate) path: PathBuf,
@@ -234,5 +255,18 @@ impl Viewer {
             && next.is_none()
             && !self.errors.contains_key(&(self.current + 1));
         (self.visible(self.current), next, waiting)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FrameState, frame_state};
+
+    #[test]
+    fn failed_pages_do_not_keep_the_previous_frame() {
+        assert_eq!(frame_state(false, true, false), FrameState::Failed);
+        assert_eq!(frame_state(false, false, false), FrameState::Loading);
+        assert_eq!(frame_state(true, false, true), FrameState::Loading);
+        assert_eq!(frame_state(true, false, false), FrameState::Ready);
     }
 }
