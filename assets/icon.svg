@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="MangaNia">
+  <rect width="256" height="256" rx="58" fill="#e9ebed"/>
+  <rect x="26" y="42" width="204" height="172" rx="28" fill="#565b61"/>
+  <rect x="42" y="60" width="172" height="140" rx="16" fill="#e9ebed"/>
+  <g fill="#565b61">
+    <path d="M122 92c-24-16-54-22-76-16v108c22-6 52 0 76 12z"/>
+    <path d="M134 92c24-16 54-22 76-16v108c-22-6-52 0-76 12z"/>
+  </g>
+</svg>
