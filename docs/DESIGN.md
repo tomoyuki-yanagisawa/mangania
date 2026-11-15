@@ -156,4 +156,5 @@ GUI を開かずに確認できる手段を用意しています。
 
 - [DECISIONS.md](DECISIONS.md): 技術判断と理由
 - [PREFERENCES.md](PREFERENCES.md): 既定値・UX・プロジェクトの好み
+- [FOLLOW_UP/index.md](FOLLOW_UP/index.md): 未実装・改善項目の管理
 - [README.md](../README.md): 利用方法
