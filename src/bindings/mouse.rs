@@ -26,6 +26,7 @@ double_click_ms = 400
 [bindings]
 next = ["left", "wheel_down"]
 prev = ["right", "wheel_up"]
+next_single = ["middle"]
 save_page = ["double_left"]
 "#;
 

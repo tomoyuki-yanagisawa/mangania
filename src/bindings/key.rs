@@ -22,7 +22,7 @@ last = ["End"]
 toggle_spread = ["v"]
 single_page = []
 spread_page = []
-toggle_fullscreen = ["F11"]
+toggle_fullscreen = ["F11", "Enter"]
 save_page = ["Ctrl+S", "Cmd+S"]
 quit = ["Escape"]
 "#;
