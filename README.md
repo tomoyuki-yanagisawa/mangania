@@ -264,6 +264,7 @@ cargo clippy --all-targets
 - [DESIGN.md](docs/DESIGN.md): 現在のアーキテクチャと動作
 - [DECISIONS.md](docs/DECISIONS.md): 技術判断と理由
 - [PREFERENCES.md](docs/PREFERENCES.md): 既定値・UX・開発の好み
+- [FOLLOW_UP/index.md](docs/FOLLOW_UP/index.md): 未実装・改善項目の管理
 
 ## 既知の制約
 
