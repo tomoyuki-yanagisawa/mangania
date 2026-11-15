@@ -4,7 +4,6 @@ version = "0.1.2"
 edition = "2024"
 
 [dependencies]
-dirs = "7.0.0"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "bmp"] }
 serde = { version = "1.0.229", features = ["derive"] }
 softbuffer = "0.4.8"
@@ -14,6 +13,9 @@ zip = { version = "9.5.1", default-features = false, features = ["deflate"] }
 
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
 muda = "0.21.2"
+
+[target.'cfg(not(windows))'.dependencies]
+dirs = "7.0.0"
 
 [build-dependencies]
 resvg = { version = "0.50.0", default-features = false }

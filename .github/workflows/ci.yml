@@ -54,6 +54,7 @@ jobs:
     runs-on: windows-latest
     env:
       RUSTUP_TOOLCHAIN: nightly
+      RUSTFLAGS: -C target-feature=+crt-static
     steps:
       - uses: actions/checkout@v4
 
@@ -67,3 +68,9 @@ jobs:
 
       - name: Build
         run: cargo build --release --locked -Z build-std --target x86_64-win7-windows-msvc
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mangania-windows7-x86_64
+          path: target/x86_64-win7-windows-msvc/release/mangania.exe
+          retention-days: 7
