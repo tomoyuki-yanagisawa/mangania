@@ -36,6 +36,42 @@ fn uses_defaults_for_prefetch_and_cache() {
 }
 
 #[test]
+fn default_config_text_round_trips() {
+    let text = Config::default().to_toml();
+    assert!(text.contains("# MangaNia settings"));
+    assert!(text.contains("# export_dir"));
+    assert_eq!(Config::parse(&text), Config::default());
+}
+
+#[test]
+fn writes_default_config_on_first_load() {
+    let dir = std::env::temp_dir().join(format!("mangania-config-create-{}", std::process::id()));
+    let path = dir.join("config.toml");
+
+    let config = Config::load_or_create_from(&path);
+
+    assert_eq!(config, Config::default());
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("prefetch = 2"));
+    assert!(text.contains("cache_mb = 128"));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn keeps_existing_config_file() {
+    let dir = std::env::temp_dir().join(format!("mangania-config-existing-{}", std::process::id()));
+    let path = dir.join("config.toml");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(&path, "spread = true\n").unwrap();
+
+    let config = Config::load_or_create_from(&path);
+
+    assert!(config.spread);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "spread = true\n");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn round_trips_config_file() {
     let dir = std::env::temp_dir().join(format!("mangania-config-{}", std::process::id()));
     let path = dir.join("config.toml");
@@ -48,6 +84,11 @@ fn round_trips_config_file() {
     };
 
     config.save_to(&path).unwrap();
+    assert!(
+        std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("# MangaNia settings")
+    );
     assert_eq!(Config::load_from(&path), config);
 
     std::fs::remove_dir_all(&dir).unwrap();
