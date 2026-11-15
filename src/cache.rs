@@ -32,16 +32,16 @@ impl Cache {
         self.entries.contains_key(&page)
     }
 
-    pub fn insert(&mut self, page: usize, image: Arc<RgbaImage>, keep: usize) {
+    pub fn insert(&mut self, page: usize, image: Arc<RgbaImage>, keep: &[usize]) -> bool {
         let bytes = image.as_raw().len();
-        if bytes > self.max_bytes && page != keep {
+        if bytes > self.max_bytes && !keep.contains(&page) {
             debug_log::log(format_args!(
                 "cache: skip page={} bytes={} over limit={}",
                 page + 1,
                 bytes,
                 self.max_bytes
             ));
-            return;
+            return false;
         }
 
         if let Some(old) = self.entries.insert(page, image) {
@@ -53,11 +53,12 @@ impl Cache {
 
         while (self.order.len() > self.max_pages || self.used_bytes > self.max_bytes)
             && self.entries.len() > 1
+            && self.entries.keys().any(|page| !keep.contains(page))
         {
             let Some(oldest) = self.order.pop_front() else {
                 break;
             };
-            if oldest == keep {
+            if keep.contains(&oldest) {
                 self.order.push_back(oldest);
                 continue;
             }
@@ -72,13 +73,16 @@ impl Cache {
             }
         }
 
+        let retained = self.entries.contains_key(&page);
         debug_log::log(format_args!(
-            "cache: insert page={} bytes={} used={}/{} entries={}",
+            "cache: insert page={} bytes={} used={}/{} entries={} keep={:?} retained={retained}",
             page + 1,
             bytes,
             self.used_bytes,
             self.max_bytes,
-            self.entries.len()
+            self.entries.len(),
+            keep
         ));
+        retained
     }
 }

@@ -494,6 +494,7 @@ impl App {
             return;
         }
 
+        let spread = self.spread;
         for (page, result) in results {
             match result {
                 Ok(image) => {
@@ -504,7 +505,7 @@ impl App {
                         image.height(),
                         image.as_raw().len()
                     ));
-                    viewer.insert(page, image);
+                    viewer.insert(page, image, spread);
                 }
                 Err(message) => {
                     eprintln!("mangania: page {}: {message}", page + 1);
