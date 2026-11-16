@@ -28,7 +28,24 @@ impl Viewport {
     }
 }
 
-pub(crate) type VisiblePage = (usize, Arc<RgbaImage>, (u32, u32));
+/// A page that is currently visible on screen.
+pub(crate) struct VisiblePage {
+    pub(crate) index: usize,
+    /// Display-sized image.
+    pub(crate) image: Arc<RgbaImage>,
+    /// Original page dimensions, used to lay out spreads.
+    pub(crate) original_size: (u32, u32),
+}
+
+impl VisiblePage {
+    pub(crate) fn render_page(&self) -> view::RenderPage<'_> {
+        view::RenderPage {
+            index: self.index,
+            image: self.image.as_ref(),
+            original_size: self.original_size,
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum FrameState {
@@ -234,8 +251,12 @@ impl Viewer {
     fn visible(&self, page: usize) -> Option<VisiblePage> {
         let key = *self.previews.get(&page)?;
         let image = self.cache.get(key)?;
-        let size = *self.sizes.get(&page)?;
-        Some((page, image, size))
+        let original_size = *self.sizes.get(&page)?;
+        Some(VisiblePage {
+            index: page,
+            image,
+            original_size,
+        })
     }
 
     /// Returns the current page, the next page in spread mode, and whether the

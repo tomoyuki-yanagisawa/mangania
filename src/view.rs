@@ -9,8 +9,16 @@ use crate::debug_log;
 
 const BACKGROUND: u32 = 0x20_20_20;
 
-/// Page index, display-sized image, and original dimensions for layout.
-pub type RenderPage<'a> = (usize, &'a RgbaImage, (u32, u32));
+/// A page ready to draw.
+#[derive(Clone, Copy)]
+pub struct RenderPage<'a> {
+    /// Page index in the archive.
+    pub index: usize,
+    /// Display-sized image.
+    pub image: &'a RgbaImage,
+    /// Original page dimensions, used to lay out spreads.
+    pub original_size: (u32, u32),
+}
 
 /// Fills the window with the background color.
 pub fn blank(buffer: &mut [u32]) {
@@ -41,7 +49,13 @@ pub fn render_pages(buffer: &mut [u32], width: usize, height: usize, pages: &[Op
     let pages: Vec<_> = pages
         .iter()
         .enumerate()
-        .map(|(index, page)| page.map(|image| (index, image, image.dimensions())))
+        .map(|(index, page)| {
+            page.map(|image| RenderPage {
+                index,
+                image,
+                original_size: image.dimensions(),
+            })
+        })
         .collect();
     render_pages_cached(
         buffer,
@@ -111,12 +125,12 @@ pub fn render_pages_cached(
     let total_width: u32 = pages
         .iter()
         .flatten()
-        .map(|(_, _, original)| original.0)
+        .map(|page| page.original_size.0)
         .sum();
     let max_height = pages
         .iter()
         .flatten()
-        .map(|(_, _, original)| original.1)
+        .map(|page| page.original_size.1)
         .max()
         .unwrap_or(0);
     if total_width == 0 || max_height == 0 {
@@ -132,26 +146,27 @@ pub fn render_pages_cached(
     let start_y = (height as isize - draw_height as isize) / 2;
 
     let mut x = start_x;
-    let keep: Vec<usize> = pages.iter().flatten().map(|(page, _, _)| *page).collect();
-    for (page, image, original) in pages.iter().flatten() {
-        let (target_width, target_height) = scaled(original.0, original.1, scale);
+    let keep: Vec<usize> = pages.iter().flatten().map(|page| page.index).collect();
+    for page in pages.iter().flatten() {
+        let (target_width, target_height) =
+            scaled(page.original_size.0, page.original_size.1, scale);
         let y = start_y + (draw_height as isize - target_height as isize) / 2;
         let target = (target_width, target_height);
-        if target == image.dimensions() {
-            blit(buffer, width, height, image, x, y);
+        if target == page.image.dimensions() {
+            blit(buffer, width, height, page.image, x, y);
         } else {
-            let key = ScaledKey::new(*page, target_width, target_height, filter);
+            let key = ScaledKey::new(page.index, target_width, target_height, filter);
             let display = if let Some(resized) = cache.get(key) {
                 debug_log::log(format_args!(
                     "view: resize cache hit page={} size={}x{} filter={}",
-                    page + 1,
+                    page.index + 1,
                     target_width,
                     target_height,
                     filter.as_str()
                 ));
                 resized
             } else {
-                let resized = resized(image, target, filter);
+                let resized = resized(page.image, target, filter);
                 cache.insert(key, Arc::clone(&resized), &keep, current);
                 resized
             };
