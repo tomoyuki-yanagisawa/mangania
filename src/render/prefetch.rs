@@ -122,29 +122,47 @@ impl Prefetch {
 
     /// `urgent` jobs jump ahead of queued prefetches and discard obsolete ones.
     pub fn request(&mut self, page: usize, entry: usize, name: String, urgent: bool) {
-        debug_log::log(format_args!(
-            "request: page={} entry={} urgent={urgent}",
-            page + 1,
-            entry
-        ));
+        if urgent {
+            self.request_batch(vec![(page, entry, name)]);
+            return;
+        }
+        debug_log::log(format_args!("request: page={} entry={}", page + 1, entry));
         let mut queue = self.shared.queue.lock().unwrap();
         if queue.closed {
             return;
         }
+        if !self.in_flight.insert(page) {
+            return;
+        }
+        queue.jobs.push_back(Job { page, entry, name });
+        drop(queue);
+        self.shared.ready.notify_one();
+    }
 
-        if !urgent {
-            if !self.in_flight.insert(page) {
-                return;
-            }
-            queue.jobs.push_back(Job { page, entry, name });
-        } else {
-            // Drop queued (not yet running) jobs so the current page starts next.
-            while let Some(job) = queue.jobs.pop_front() {
-                self.in_flight.remove(&job.page);
-            }
+    /// Queues several urgent jobs at once. Queued (not yet running) jobs are
+    /// discarded once, so the batch starts next without dropping its own
+    /// members. The first item runs first.
+    pub fn request_batch(&mut self, jobs: Vec<(usize, usize, String)>) {
+        if jobs.is_empty() {
+            return;
+        }
+        let mut queue = self.shared.queue.lock().unwrap();
+        if queue.closed {
+            return;
+        }
+        // Drop queued (not yet running) jobs so the current pages start next.
+        while let Some(job) = queue.jobs.pop_front() {
+            self.in_flight.remove(&job.page);
+        }
+        for (page, entry, name) in jobs.into_iter().rev() {
             if self.in_flight.contains(&page) {
-                return;
+                continue;
             }
+            debug_log::log(format_args!(
+                "request: page={} entry={} urgent=batch",
+                page + 1,
+                entry
+            ));
             self.in_flight.insert(page);
             queue.jobs.push_front(Job { page, entry, name });
         }

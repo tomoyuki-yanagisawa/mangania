@@ -63,7 +63,7 @@ impl App {
                     pages,
                     prefetch,
                     self.depth,
-                    self.cache_bytes,
+                    self.cache_limits,
                     self.viewport(),
                 ));
                 self.viewer_generation = self.viewer_generation.wrapping_add(1);

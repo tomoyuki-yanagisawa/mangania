@@ -41,3 +41,37 @@ fn prefetches_without_a_winit_event_loop() {
     drop(prefetch);
     common::cleanup(&path);
 }
+
+#[test]
+fn urgent_batch_keeps_the_requested_order() {
+    let image = common::png();
+    let path = common::temp_zip(&[("1.png", image.as_slice()), ("2.png", image.as_slice())]);
+    let cache_dir = path.parent().unwrap().join("cache");
+    let mut archive = Archive::open(&path).unwrap();
+    let pages = std::mem::take(&mut archive.pages);
+    let mut prefetch = Prefetch::start(archive, DiskCache::new(cache_dir.clone()), || true);
+
+    let jobs = pages
+        .iter()
+        .enumerate()
+        .map(|(index, page)| (index, page.entry, page.name.clone()))
+        .collect();
+    prefetch.request_batch(jobs);
+
+    // The worker is single-threaded, so the first requested page must finish
+    // first. A second urgent request must not drop the first one.
+    let mut order = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while order.len() < 2 {
+        for (page, result) in prefetch.poll() {
+            result.unwrap();
+            order.push(page);
+        }
+        assert!(Instant::now() < deadline, "prefetch timed out");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(order, vec![0, 1]);
+
+    drop(prefetch);
+    common::cleanup(&path);
+}
