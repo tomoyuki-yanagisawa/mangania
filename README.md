@@ -36,6 +36,8 @@ cargo run --release -- --check path/to/book.zip
 cargo run --release -- --render-page 1 out.png path/to/book.zip
 ```
 
+Windows の exe は GUI サブシステムでビルドしているため、ダブルクリックではコンソールウィンドウが開きません。`--list` などの CLI モードでは親コンソールに接続し、標準出力のリダイレクトも維持します。
+
 | 操作 | キー・マウス |
 | --- | --- |
 | 次のページ | Right / 左クリック / ホイール下 |
