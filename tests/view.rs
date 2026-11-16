@@ -13,6 +13,26 @@ fn blue() -> RgbaImage {
     RgbaImage::from_pixel(2, 2, Rgba([0, 0, 255, 255]))
 }
 
+fn page(index: usize, image: &RgbaImage) -> view::RenderPage<'_> {
+    view::RenderPage {
+        index,
+        image,
+        original_size: image.dimensions(),
+    }
+}
+
+fn page_with_size(
+    index: usize,
+    image: &RgbaImage,
+    original_size: (u32, u32),
+) -> view::RenderPage<'_> {
+    view::RenderPage {
+        index,
+        image,
+        original_size,
+    }
+}
+
 #[test]
 fn renders_a_single_page_centered() {
     let mut buffer = vec![0u32; 8 * 4];
@@ -61,7 +81,7 @@ fn reuses_scaled_pages_by_page_and_filter() {
         &mut buffer,
         8,
         4,
-        &[Some((0, &image, image.dimensions()))],
+        &[Some(page(0, &image))],
         ScaleFilter::Triangle,
         0,
         &mut cache,
@@ -74,7 +94,7 @@ fn reuses_scaled_pages_by_page_and_filter() {
         &mut buffer,
         8,
         4,
-        &[Some((0, &image, image.dimensions()))],
+        &[Some(page(0, &image))],
         ScaleFilter::Triangle,
         0,
         &mut cache,
@@ -85,7 +105,7 @@ fn reuses_scaled_pages_by_page_and_filter() {
         &mut buffer,
         8,
         4,
-        &[Some((0, &image, image.dimensions()))],
+        &[Some(page(0, &image))],
         ScaleFilter::Lanczos3,
         0,
         &mut cache,
@@ -96,7 +116,7 @@ fn reuses_scaled_pages_by_page_and_filter() {
         &mut buffer,
         8,
         4,
-        &[Some((1, &image, image.dimensions()))],
+        &[Some(page(1, &image))],
         ScaleFilter::Triangle,
         0,
         &mut cache,
@@ -108,10 +128,7 @@ fn reuses_scaled_pages_by_page_and_filter() {
 fn retains_visible_spread_at_each_target_size_over_cache_budget() {
     let left = blue();
     let right = red();
-    let pages = [
-        Some((0, &left, left.dimensions())),
-        Some((1, &right, right.dimensions())),
-    ];
+    let pages = [Some(page(0, &left)), Some(page(1, &right))];
     let mut cache = ScaledCache::new(0, 0);
     let mut buffer = vec![0; 8 * 4];
     view::render_pages_cached(
@@ -159,8 +176,8 @@ fn spread_layout_uses_original_dimensions_not_preview_dimensions() {
         8,
         8,
         &[
-            Some((0, &left_preview, left.dimensions())),
-            Some((1, &right_preview, right.dimensions())),
+            Some(page_with_size(0, &left_preview, left.dimensions())),
+            Some(page_with_size(1, &right_preview, right.dimensions())),
         ],
         ScaleFilter::Triangle,
         0,
@@ -184,7 +201,7 @@ fn does_not_cache_an_image_that_already_matches_the_target() {
         &mut buffer,
         8,
         4,
-        &[Some((0, &image, image.dimensions()))],
+        &[Some(page(0, &image))],
         ScaleFilter::Triangle,
         0,
         &mut cache,

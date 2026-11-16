@@ -25,7 +25,7 @@ use crate::navigation;
 use crate::open::Entry;
 use crate::prefetch::Prefetch;
 use crate::view;
-use crate::viewer::{FrameState, Viewer, Viewport, frame_state};
+use crate::viewer::{FrameState, Viewer, Viewport, VisiblePage, frame_state};
 
 pub fn run(path: Option<PathBuf>, prefetch: Option<usize>) -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
@@ -123,7 +123,7 @@ impl App {
         self.update_title();
         std::thread::spawn(move || {
             let result = Entry::open(&path);
-            let _ = proxy.send_event(UserEvent::Opened(generation, result));
+            let _ = proxy.send_event(UserEvent::Opened { generation, result });
         });
     }
 
@@ -371,7 +371,7 @@ impl App {
         self.update_title();
         std::thread::spawn(move || {
             let result = export::save_current_page(&path, page, &config);
-            let _ = proxy.send_event(UserEvent::Saved(generation, result));
+            let _ = proxy.send_event(UserEvent::Saved { generation, result });
         });
     }
 
@@ -582,12 +582,11 @@ impl App {
             let start = std::time::Instant::now();
             let pages = if self.config.spread {
                 [
-                    next.as_ref()
-                        .map(|(page, image, size)| (*page, image.as_ref(), *size)),
-                    Some((current.0, current.1.as_ref(), current.2)),
+                    next.as_ref().map(VisiblePage::render_page),
+                    Some(current.render_page()),
                 ]
             } else {
-                [None, Some((current.0, current.1.as_ref(), current.2))]
+                [None, Some(current.render_page())]
             };
             let filter = self.config.scale_filter;
             if let Some(viewer) = self.viewer.as_mut() {
@@ -597,7 +596,7 @@ impl App {
                     size.height as usize,
                     &pages,
                     filter,
-                    current.0,
+                    current.index,
                     &mut viewer.cache,
                 );
             }
@@ -723,8 +722,8 @@ impl ApplicationHandler<UserEvent> for App {
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
             UserEvent::ImageReady => self.handle_images_ready(),
-            UserEvent::Opened(generation, result) => self.finish_open(generation, result),
-            UserEvent::Saved(generation, result) => self.finish_save(generation, result),
+            UserEvent::Opened { generation, result } => self.finish_open(generation, result),
+            UserEvent::Saved { generation, result } => self.finish_save(generation, result),
             #[cfg(any(target_os = "windows", target_os = "macos"))]
             UserEvent::Menu(event) => self.handle_menu(event, _event_loop),
         }
