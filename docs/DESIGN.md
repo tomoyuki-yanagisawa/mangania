@@ -104,6 +104,7 @@ softbuffer のピクセルバッファ
 - `prefetch`、`cache_pages`、`cache_mb` は `config.toml` で変更できます。`--prefetch` は設定を上書きします。
 - ページ移動ではキャッシュをクリアしません。近いページのプレビューを再利用し、新しい挿入は移動後の現在ページを基準に距離を計算します。
 - ウィンドウサイズまたは縮小フィルタが変わるとキャッシュをクリアし、現在ページと見開きの相手を再要求します。この場合は再デコードが発生します。
+- 縮小は `fast_image_resize` の SIMD 実装を使い、失敗時は `image` crate の縮小へフォールバックします。フィルタは nearest / bilinear（triangle）/ catmull_rom / gaussian / lanczos3 に対応します。
 
 ## 7. 描画
 
