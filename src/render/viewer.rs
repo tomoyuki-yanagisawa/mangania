@@ -69,6 +69,13 @@ pub(crate) fn frame_state(
     }
 }
 
+/// Memory cache limits. Whichever is reached first evicts entries.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CacheLimits {
+    pub(crate) entries: usize,
+    pub(crate) bytes: usize,
+}
+
 pub(crate) struct Viewer {
     pub(crate) file_name: String,
     pub(crate) path: PathBuf,
@@ -91,17 +98,16 @@ impl Viewer {
         pages: Vec<Page>,
         prefetch: Prefetch,
         depth: usize,
-        cache_bytes: usize,
+        cache_limits: CacheLimits,
         viewport: Viewport,
     ) -> Self {
-        let max_entries = depth.saturating_add(2).saturating_mul(2).max(4);
         Self {
             file_name,
             path,
             pages,
             current: 0,
             prefetch,
-            cache: ScaledCache::new(max_entries, cache_bytes),
+            cache: ScaledCache::new(cache_limits.entries, cache_limits.bytes),
             errors: HashMap::new(),
             previews: HashMap::new(),
             sizes: HashMap::new(),
@@ -160,35 +166,40 @@ impl Viewer {
 
     pub(crate) fn request_current(&mut self, spread: bool) {
         let current = self.current;
-        self.request(current, true);
+        let mut pages = vec![current];
         if spread && current + 1 < self.pages.len() {
-            self.request(current + 1, true);
+            pages.push(current + 1);
+        }
+        // Ask for the whole spread at once. Requesting the pages separately
+        // would make the second urgent request discard the first one.
+        let jobs = pages
+            .into_iter()
+            .filter(|&page| self.needs_request(page))
+            .map(|page| {
+                let page_info = &self.pages[page];
+                (page, page_info.entry, page_info.name.clone())
+            })
+            .collect();
+        self.prefetch.request_batch(jobs);
+    }
+
+    pub(crate) fn prefetch_around(&mut self, spread: bool) {
+        for page in prefetch_targets(self.current, self.pages.len(), self.depth, spread) {
+            self.request(page);
         }
     }
 
-    pub(crate) fn prefetch_around(&mut self) {
-        let current = self.current;
-        for offset in 1..=self.depth {
-            let Some(page) = current.checked_add(offset) else {
-                break;
-            };
-            if page >= self.pages.len() {
-                break;
-            }
-            self.request(page, false);
-        }
+    fn needs_request(&self, page: usize) -> bool {
+        page < self.pages.len() && !self.has_preview(page) && !self.errors.contains_key(&page)
     }
 
-    fn request(&mut self, page: usize, urgent: bool) {
-        if page >= self.pages.len() || self.has_preview(page) || self.errors.contains_key(&page) {
+    fn request(&mut self, page: usize) {
+        if !self.needs_request(page) || self.attempted.contains(&page) {
             return;
         }
-        if !urgent && self.attempted.contains(&page) {
-            return;
-        }
-        let entry = self.pages[page].entry;
-        let name = self.pages[page].name.clone();
-        self.prefetch.request(page, entry, name, urgent);
+        let page_info = &self.pages[page];
+        self.prefetch
+            .request(page, page_info.entry, page_info.name.clone(), false);
     }
 
     /// Resizes an arrived decoded page to the current window preview, caches
@@ -281,9 +292,28 @@ impl Viewer {
     }
 }
 
+/// Pages to prefetch ahead. In spread mode the depth counts spreads, so each
+/// step covers the two pages of the next spread.
+fn prefetch_targets(current: usize, len: usize, depth: usize, spread: bool) -> Vec<usize> {
+    let step = if spread { 2 } else { 1 };
+    let mut targets = Vec::new();
+    for offset in 1..=depth {
+        let Some(start) = current.checked_add(offset.saturating_mul(step)) else {
+            break;
+        };
+        for page in start..start.saturating_add(step) {
+            if page >= len {
+                return targets;
+            }
+            targets.push(page);
+        }
+    }
+    targets
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{FrameState, frame_state};
+    use super::{FrameState, frame_state, prefetch_targets};
 
     #[test]
     fn failed_pages_do_not_keep_the_previous_frame() {
@@ -291,5 +321,19 @@ mod tests {
         assert_eq!(frame_state(false, false, false), FrameState::Loading);
         assert_eq!(frame_state(true, false, true), FrameState::Loading);
         assert_eq!(frame_state(true, false, false), FrameState::Ready);
+    }
+
+    #[test]
+    fn prefetch_follows_pages_or_spreads() {
+        assert_eq!(prefetch_targets(0, 10, 2, false), vec![1, 2]);
+        assert_eq!(prefetch_targets(0, 10, 2, true), vec![2, 3, 4, 5]);
+        assert_eq!(prefetch_targets(5, 10, 1, true), vec![7, 8]);
+    }
+
+    #[test]
+    fn prefetch_stops_at_the_last_page() {
+        assert_eq!(prefetch_targets(0, 3, 2, true), vec![2]);
+        assert_eq!(prefetch_targets(8, 10, 2, true), Vec::<usize>::new());
+        assert_eq!(prefetch_targets(9, 10, 2, false), Vec::<usize>::new());
     }
 }

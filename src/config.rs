@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_EXPORT_NAME: &str = "{book}_{page:03}";
 pub const DEFAULT_PREFETCH: usize = 2;
+pub const DEFAULT_CACHE_PAGES: usize = 8;
 pub const DEFAULT_CACHE_MB: usize = 128;
 
 const CONFIG_FILE: &str = "config.toml";
@@ -70,6 +71,7 @@ pub struct Config {
     pub export_dir: Option<PathBuf>,
     pub export_name: String,
     pub prefetch: usize,
+    pub cache_pages: usize,
     pub cache_mb: usize,
     pub scale_filter: ScaleFilter,
     pub debug: bool,
@@ -82,6 +84,7 @@ impl Default for Config {
             export_dir: None,
             export_name: DEFAULT_EXPORT_NAME.to_string(),
             prefetch: DEFAULT_PREFETCH,
+            cache_pages: DEFAULT_CACHE_PAGES,
             cache_mb: DEFAULT_CACHE_MB,
             scale_filter: ScaleFilter::default(),
             debug: false,
@@ -145,7 +148,8 @@ impl Config {
             "# spread: false = 1ページ表示, true = 見開き表示\n",
             "# export_dir: 省略時は OS のピクチャフォルダ/MangaNia\n",
             "# export_name: {book}, {page}, {page:03}, {name} が使えます\n",
-            "# prefetch: 先読み枚数\n",
+            "# prefetch: 先読みする見開き数（単ページ表示ではページ数）\n",
+            "# cache_pages: メモリに保持するページ数。0 は既定値\n",
             "# cache_mb: メモリキャッシュ上限（MiB）。0 は既定値\n",
             "# scale_filter: nearest / triangle / catmull_rom / gaussian / lanczos3\n",
             "# debug: true で debug.log にログを出力\n",
@@ -168,6 +172,17 @@ impl Config {
                     .unwrap_or_else(|| PathBuf::from("."))
                     .join("MangaNia")
             })
+    }
+
+    /// Cache capacity in images. One page can occupy two images: its window
+    /// preview and the exact size used for spread layout.
+    pub fn cache_entries(&self) -> usize {
+        let pages = if self.cache_pages == 0 {
+            DEFAULT_CACHE_PAGES
+        } else {
+            self.cache_pages
+        };
+        pages.saturating_mul(2)
     }
 
     pub fn cache_bytes(&self) -> usize {

@@ -20,7 +20,7 @@ use crate::debug_log;
 use crate::event::UserEvent;
 use crate::input::bindings::{KeyBindings, MouseBindings};
 use crate::input::click::ClickTracker;
-use crate::render::viewer::Viewer;
+use crate::render::viewer::{CacheLimits, Viewer};
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::ui::menu::MenuBar;
 
@@ -35,7 +35,7 @@ pub fn run(path: Option<PathBuf>, prefetch: Option<usize>) -> Result<(), Box<dyn
 struct App {
     initial_path: Option<PathBuf>,
     depth: usize,
-    cache_bytes: usize,
+    cache_limits: CacheLimits,
     proxy: EventLoopProxy<UserEvent>,
     viewer: Option<Viewer>,
     window: Option<Arc<Window>>,
@@ -73,22 +73,30 @@ impl App {
             }
         }
         debug_log::log(format_args!(
-            "config: spread={} prefetch={} cache_mb={} scale_filter={} debug={}",
+            "config: spread={} prefetch={} cache_pages={} cache_mb={} scale_filter={} debug={}",
             config.spread,
             config.prefetch,
+            config.cache_pages,
             config.cache_mb,
             config.scale_filter.as_str(),
             config.debug
         ));
         let depth = prefetch.unwrap_or(config.prefetch);
         debug_log::log(format_args!("prefetch depth: {depth}"));
-        let cache_bytes = config.cache_bytes();
+        let cache_limits = CacheLimits {
+            entries: config.cache_entries(),
+            bytes: config.cache_bytes(),
+        };
+        debug_log::log(format_args!(
+            "memory cache: entries={} bytes={}",
+            cache_limits.entries, cache_limits.bytes
+        ));
         let keys = KeyBindings::load();
         let mouse = MouseBindings::load();
         Self {
             initial_path,
             depth,
-            cache_bytes,
+            cache_limits,
             proxy,
             viewer: None,
             window: None,
@@ -158,7 +166,7 @@ impl App {
     fn refresh(&mut self) {
         if let Some(viewer) = self.viewer.as_mut() {
             viewer.request_current(self.config.spread);
-            viewer.prefetch_around();
+            viewer.prefetch_around(self.config.spread);
         }
         self.update_title();
         self.request_redraw();
