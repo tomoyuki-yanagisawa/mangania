@@ -63,7 +63,9 @@ fn parses_every_scale_filter() {
     let filters = [
         ("nearest", ScaleFilter::Nearest),
         ("triangle", ScaleFilter::Triangle),
+        ("hamming", ScaleFilter::Hamming),
         ("catmull_rom", ScaleFilter::CatmullRom),
+        ("mitchell", ScaleFilter::Mitchell),
         ("gaussian", ScaleFilter::Gaussian),
         ("lanczos3", ScaleFilter::Lanczos3),
     ];
@@ -72,6 +74,11 @@ fn parses_every_scale_filter() {
         assert_eq!(config.scale_filter, expected, "scale_filter = {name}");
     }
     assert_eq!(ScaleFilter::ALL.len(), filters.len());
+
+    for filter in ScaleFilter::ALL {
+        let config = Config::parse(&format!("scale_filter = \"{}\"\n", filter.as_str()));
+        assert_eq!(config.scale_filter, filter, "{}", filter.as_str());
+    }
 }
 
 #[test]

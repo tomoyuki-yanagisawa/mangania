@@ -43,7 +43,7 @@ debug = false
 - `cache_pages` の省略時は 8。`0` も 8 として扱う。1ページは最大2枚（プレビューと見開き描画用）を使う。
 - `cache_mb` の省略時は 128。`0` も 128 として扱う。`cache_pages` とどちらかに達した時点で破棄する。
 - ディスクキャッシュは自動削除しない。メニューの「ファイル」>「キャッシュを削除」で手動削除する。
-- `scale_filter` の省略時は `triangle`。`nearest` / `triangle` / `catmull_rom` / `gaussian` / `lanczos3` を指定できる。不正な値は `triangle` に戻る。
+- `scale_filter` の省略時は `triangle`。`nearest` / `triangle` / `hamming` / `catmull_rom` / `mitchell` / `gaussian` / `lanczos3` を指定できる。不正な値は `triangle` に戻る。
 - `debug` の省略時は `false`。`true` にすると `config.toml` と同じディレクトリの `debug.log` にログを出力する。
 - 同名ファイルは上書きする。
 - 保存するのは現在ページのみで、ZIP 内の元画像バイト列をそのまま使う。
@@ -133,7 +133,9 @@ save_page = ["double_left"]
 
 - `nearest`: 最速だがジャギーが目立つ。拡大表示や確認用途向け。
 - `triangle`: 既定。速度と画質のバランスが良く、通常の閲覧に向く。
+- `hamming`: Triangle と同じくらい速く、輪郭が締まる。縮小向き。
 - `catmull_rom`: Triangle より輪郭が締まる。線が強調される一方で過剰なシャープ感が出ることがある。
+- `mitchell`: Catmull-Rom と同じくらいの速度で、より軟らかい。リンギングを抑えたいとき。
 - `gaussian`: なめらかで軟らかい。細部はややぼける。
 - `lanczos3`: 最もシャープ。スクリーントーンはくっきりするが、リンギング・モアレが出やすく縮小にも時間がかかる。
 

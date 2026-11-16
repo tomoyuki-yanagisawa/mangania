@@ -2,7 +2,6 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use image::imageops::FilterType;
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_EXPORT_NAME: &str = "{book}_{page:03}";
@@ -18,16 +17,20 @@ pub enum ScaleFilter {
     Nearest,
     #[default]
     Triangle,
+    Hamming,
     CatmullRom,
+    Mitchell,
     Gaussian,
     Lanczos3,
 }
 
 impl ScaleFilter {
-    pub const ALL: [ScaleFilter; 5] = [
+    pub const ALL: [ScaleFilter; 7] = [
         ScaleFilter::Nearest,
         ScaleFilter::Triangle,
+        ScaleFilter::Hamming,
         ScaleFilter::CatmullRom,
+        ScaleFilter::Mitchell,
         ScaleFilter::Gaussian,
         ScaleFilter::Lanczos3,
     ];
@@ -36,7 +39,9 @@ impl ScaleFilter {
         match self {
             ScaleFilter::Nearest => "nearest",
             ScaleFilter::Triangle => "triangle",
+            ScaleFilter::Hamming => "hamming",
             ScaleFilter::CatmullRom => "catmull_rom",
+            ScaleFilter::Mitchell => "mitchell",
             ScaleFilter::Gaussian => "gaussian",
             ScaleFilter::Lanczos3 => "lanczos3",
         }
@@ -46,19 +51,11 @@ impl ScaleFilter {
         match self {
             ScaleFilter::Nearest => "Nearest",
             ScaleFilter::Triangle => "Triangle",
+            ScaleFilter::Hamming => "Hamming",
             ScaleFilter::CatmullRom => "Catmull-Rom",
+            ScaleFilter::Mitchell => "Mitchell",
             ScaleFilter::Gaussian => "Gaussian",
             ScaleFilter::Lanczos3 => "Lanczos3",
-        }
-    }
-
-    pub fn to_filter_type(self) -> FilterType {
-        match self {
-            ScaleFilter::Nearest => FilterType::Nearest,
-            ScaleFilter::Triangle => FilterType::Triangle,
-            ScaleFilter::CatmullRom => FilterType::CatmullRom,
-            ScaleFilter::Gaussian => FilterType::Gaussian,
-            ScaleFilter::Lanczos3 => FilterType::Lanczos3,
         }
     }
 }
@@ -151,7 +148,7 @@ impl Config {
             "# prefetch: 先読みする見開き数（単ページ表示ではページ数）\n",
             "# cache_pages: メモリに保持するページ数。0 は既定値\n",
             "# cache_mb: メモリキャッシュ上限（MiB）。0 は既定値\n",
-            "# scale_filter: nearest / triangle / catmull_rom / gaussian / lanczos3\n",
+            "# scale_filter: nearest / triangle / hamming / catmull_rom / mitchell / gaussian / lanczos3\n",
             "# debug: true で debug.log にログを出力\n",
             "\n",
         ));
