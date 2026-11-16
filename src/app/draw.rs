@@ -1,8 +1,10 @@
 use std::num::NonZeroU32;
 
+use image::RgbaImage;
+
 use crate::debug_log;
 use crate::render::view;
-use crate::render::viewer::{FrameState, Viewport, VisiblePage, frame_state};
+use crate::render::viewer::{FrameState, Viewport, frame_state};
 
 use super::App;
 
@@ -16,24 +18,21 @@ impl App {
                 (size.width, size.height)
             })
             .unwrap_or((0, 0));
-        Viewport::new(width, height, self.config.scale_filter)
+        Viewport::new(width, height, self.config.scale_filter, self.config.spread)
     }
 
-    /// Updates the viewer when the window size or filter changed. The resized
-    /// cache is cleared so pages are decoded again for the new target.
+    /// Updates the viewer when the window size, filter, or display mode
+    /// changed. The page cache is cleared so images are decoded again for the
+    /// new target.
     pub(super) fn sync_viewport(&mut self) -> bool {
-        let Some(window) = self.window.as_ref() else {
-            return false;
-        };
-        let size = window.inner_size();
-        if size.width == 0 || size.height == 0 {
+        let viewport = self.viewport();
+        if viewport.is_empty() {
             return false;
         }
-        let filter = self.config.scale_filter;
         let Some(viewer) = self.viewer.as_mut() else {
             return false;
         };
-        let changed = viewer.set_viewport(size.width, size.height, filter);
+        let changed = viewer.set_viewport(viewport);
         if changed {
             self.last_frame.clear();
         }
@@ -62,10 +61,10 @@ impl App {
             return;
         };
 
-        let (current, next, waiting_for_next) =
-            self.viewer.as_ref().map_or((None, None, false), |viewer| {
-                viewer.visible_pages(self.config.spread)
-            });
+        let (current, next, waiting_for_next) = self
+            .viewer
+            .as_ref()
+            .map_or((None, None, false), |viewer| viewer.visible_pages());
         let page = self
             .viewer
             .as_ref()
@@ -104,28 +103,19 @@ impl App {
             } else {
                 view::blank(&mut buffer);
             }
-        } else if let Some(current) = current {
+        } else if current.is_some() {
             let start = std::time::Instant::now();
-            let pages = if self.config.spread {
-                [
-                    next.as_ref().map(VisiblePage::render_page),
-                    Some(current.render_page()),
-                ]
+            let pages: Vec<Option<&RgbaImage>> = if self.config.spread {
+                vec![next.as_deref(), current.as_deref()]
             } else {
-                [None, Some(current.render_page())]
+                vec![current.as_deref()]
             };
-            let filter = self.config.scale_filter;
-            if let Some(viewer) = self.viewer.as_mut() {
-                view::render_pages_cached(
-                    &mut buffer,
-                    size.width as usize,
-                    size.height as usize,
-                    &pages,
-                    filter,
-                    current.index,
-                    &mut viewer.cache,
-                );
-            }
+            view::render_pages(
+                &mut buffer,
+                size.width as usize,
+                size.height as usize,
+                &pages,
+            );
 
             self.last_frame.resize(buffer.len(), 0);
             self.last_frame.copy_from_slice(&buffer);

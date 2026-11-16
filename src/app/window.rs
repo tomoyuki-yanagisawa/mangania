@@ -30,6 +30,9 @@ impl App {
             }
             viewer.prefetch.clear_pending();
         }
+        // Display images are sized for the mode, so switching it invalidates
+        // the page cache.
+        self.sync_viewport();
         self.refresh();
     }
 
