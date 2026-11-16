@@ -23,3 +23,7 @@ dirs = "7.0.0"
 [build-dependencies]
 resvg = { version = "0.50.0", default-features = false }
 winresource = "0.1.34"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
