@@ -20,10 +20,10 @@ pub fn check(path: &Path, cache: &DiskCache) -> Result<(), Box<dyn Error>> {
     let mut failed = 0;
 
     for page in 0..total {
-        let name = entry.archive.pages[page].name.clone();
-        if let Err(error) = cache.decode_page(&mut entry.archive, page) {
+        let page_info = entry.archive.pages[page].clone();
+        if let Err(error) = cache.decode(&mut entry.archive, page_info.entry, &page_info.name) {
             failed += 1;
-            eprintln!("page {} ({}): {error}", page + 1, name);
+            eprintln!("page {} ({}): {error}", page + 1, page_info.name);
         }
     }
 
@@ -44,8 +44,9 @@ pub fn render_page(
     let index = page
         .checked_sub(1)
         .ok_or_else(|| io::Error::other("page must be >= 1"))?;
+    let page_info = entry.archive.pages[index].clone();
     let image = cache
-        .decode_page(&mut entry.archive, index)
+        .decode(&mut entry.archive, page_info.entry, &page_info.name)
         .map_err(io::Error::other)?;
     image::DynamicImage::ImageRgba8(image).save(output)?;
     println!("wrote {}", output.display());

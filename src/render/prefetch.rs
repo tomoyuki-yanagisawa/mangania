@@ -74,7 +74,7 @@ impl Prefetch {
                     job.entry
                 ));
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let image = cache.decode_entry(&mut archive, job.entry, &job.name)?;
+                    let image = cache.decode(&mut archive, job.entry, &job.name)?;
                     debug_log::log(format_args!(
                         "job decode: page={} {}x{} in {:.1}ms",
                         job.page + 1,

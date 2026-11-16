@@ -41,7 +41,16 @@ pub fn save_current_page(
     std::fs::create_dir_all(&directory)
         .map_err(|error| format!("create {}: {error}", directory.display()))?;
     let output = directory.join(format!("{stem}.{extension}"));
-    cache.write_entry_to(&mut entry.archive, page, &output)?;
+    let page_info = entry.archive.pages[page].clone();
+    let source = cache.source(&mut entry.archive, page_info.entry, &page_info.name)?;
+    if let Err(error) = std::fs::copy(&source, &output) {
+        let _ = std::fs::remove_file(&output);
+        return Err(format!(
+            "copy {} to {}: {error}",
+            source.display(),
+            output.display()
+        ));
+    }
     Ok(output)
 }
 
