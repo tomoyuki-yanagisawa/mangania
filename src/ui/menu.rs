@@ -5,9 +5,9 @@ use winit::window::Window;
 #[cfg(target_os = "windows")]
 use crate::platform::windows::menu::NativeMenu;
 
-use crate::bindings::Action;
 use crate::config::ScaleFilter;
 use crate::event::UserEvent;
+use crate::input::bindings::Action;
 
 pub struct MenuBar {
     pub save: MenuItem,

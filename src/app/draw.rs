@@ -1,8 +1,8 @@
 use std::num::NonZeroU32;
 
 use crate::debug_log;
-use crate::view;
-use crate::viewer::{FrameState, Viewport, VisiblePage, frame_state};
+use crate::render::view;
+use crate::render::viewer::{FrameState, Viewport, VisiblePage, frame_state};
 
 use super::App;
 

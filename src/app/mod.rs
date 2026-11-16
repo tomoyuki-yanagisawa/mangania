@@ -15,14 +15,14 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::keyboard::ModifiersState;
 use winit::window::{Window, WindowId};
 
-use crate::bindings::{KeyBindings, MouseBindings};
-use crate::click::ClickTracker;
 use crate::config::Config;
 use crate::debug_log;
 use crate::event::UserEvent;
+use crate::input::bindings::{KeyBindings, MouseBindings};
+use crate::input::click::ClickTracker;
+use crate::render::viewer::Viewer;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
-use crate::menu::MenuBar;
-use crate::viewer::Viewer;
+use crate::ui::menu::MenuBar;
 
 pub fn run(path: Option<PathBuf>, prefetch: Option<usize>) -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;

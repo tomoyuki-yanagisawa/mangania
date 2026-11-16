@@ -4,8 +4,8 @@ use std::path::Path;
 
 use image::ImageFormat;
 use mangania::config::Config;
-use mangania::disk_cache::DiskCache;
 use mangania::export;
+use mangania::storage::disk_cache::DiskCache;
 
 fn cache_for(archive_path: &Path) -> DiskCache {
     DiskCache::new(archive_path.parent().unwrap().join("cache"))

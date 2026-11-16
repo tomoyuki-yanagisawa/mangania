@@ -1,4 +1,4 @@
-use mangania::navigation::{clamp, clamp_page, step, step_single};
+use mangania::input::navigation::{clamp, clamp_page, step, step_single};
 
 #[test]
 fn clamps_and_aligns_pages() {

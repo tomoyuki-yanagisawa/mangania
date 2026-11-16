@@ -3,7 +3,7 @@ use std::time::Instant;
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
 
-use crate::bindings::{Action, MouseBindings};
+use crate::input::bindings::{Action, MouseBindings};
 
 const DOUBLE_CLICK_DISTANCE: f64 = 10.0;
 

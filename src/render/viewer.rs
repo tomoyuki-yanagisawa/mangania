@@ -5,12 +5,12 @@ use std::sync::Arc;
 use image::RgbaImage;
 
 use crate::archive::Page;
-use crate::cache::{ScaledCache, ScaledKey};
 use crate::config::ScaleFilter;
 use crate::debug_log;
-use crate::navigation;
-use crate::prefetch::Prefetch;
-use crate::view;
+use crate::input::navigation;
+use crate::render::cache::{ScaledCache, ScaledKey};
+use crate::render::prefetch::Prefetch;
+use crate::render::view;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Viewport {

@@ -1,7 +1,7 @@
 use image::{Rgba, RgbaImage};
-use mangania::cache::ScaledCache;
 use mangania::config::ScaleFilter;
-use mangania::view;
+use mangania::render::cache::ScaledCache;
+use mangania::render::view;
 
 const BACKGROUND: u32 = 0x20_20_20;
 

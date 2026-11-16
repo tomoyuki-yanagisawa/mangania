@@ -4,8 +4,8 @@ use winit::event::{MouseButton, MouseScrollDelta};
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::keyboard::Key;
 
-use crate::bindings::{Action, MouseInput, WheelDirection};
-use crate::navigation;
+use crate::input::bindings::{Action, MouseInput, WheelDirection};
+use crate::input::navigation;
 
 use super::App;
 

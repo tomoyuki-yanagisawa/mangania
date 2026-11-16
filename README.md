@@ -289,30 +289,40 @@ src/
 │   ├── input.rs # ナビゲーション、クリック、キー
 │   ├── open.rs  # アーカイブを開く、ページ保存
 │   └── window.rs # 全画面、メニュー、縮小フィルタ操作
+├── archive/
+│   ├── mod.rs   # ZIP 索引・自然順・読み出し、エントリのストリーム展開
+│   ├── open.rs  # 形式判定・エントリ
+│   └── decoder.rs # JPEG / PNG / WebP / BMP デコード
+├── render/
+│   ├── mod.rs
+│   ├── cache.rs # 表示サイズ画像の上限付きキャッシュ（現在ページからの距離で破棄）
+│   ├── prefetch.rs # ワーカースレッドと優先度付きジョブ（winit非依存）
+│   ├── view.rs  # フィット・見開き配置・0RGB 描画
+│   └── viewer.rs # Viewer: ページ、現在位置、表示サイズキャッシュ、Prefetch要求
+├── input/
+│   ├── mod.rs
+│   ├── bindings/
+│   │   ├── mod.rs   # アクション、共通の設定読み込み
+│   │   ├── key.rs   # キー割り当て
+│   │   └── mouse.rs # マウス割り当て
+│   ├── click.rs # クリック・ダブルクリック判定
+│   └── navigation.rs # ページ移動の純粋関数
+├── storage/
+│   ├── mod.rs
+│   └── disk_cache.rs # 展開済みページのディスクキャッシュ（手動削除）
+├── ui/
+│   ├── mod.rs
+│   └── menu.rs  # Windows / macOS のネイティブメニュー（共通レイアウト）
 ├── platform/
 │   └── windows/
 │       ├── menu.rs     # HWND / HMENU とメニュー表示
 │       └── shortcut.rs # .lnk の COM 解決
-├── click.rs     # クリック・ダブルクリック判定
-├── viewer.rs    # Viewer: ページ、現在位置、表示サイズキャッシュ、Prefetch要求
-├── cache.rs     # 表示サイズ画像の上限付きキャッシュ（現在ページからの距離で破棄）
-├── navigation.rs # ページ移動の純粋関数
-├── event.rs     # winit/menu のユーザーイベント
-├── cli.rs       # 引数解析
 ├── config.rs    # TOML設定（表示・保存・縮小フィルタの永続化）
-├── bindings/
-│   ├── mod.rs   # アクション、共通の設定読み込み
-│   ├── key.rs   # キー割り当て
-│   └── mouse.rs # マウス割り当て
+├── event.rs     # winit/menu のユーザーイベント
+├── debug_log.rs # デバッグログ出力
+├── cli.rs       # 引数解析
 ├── export.rs    # 表示中ページの保存、ファイル名テンプレート
-├── headless.rs  # GUIなしの list / check / render-page
-├── archive.rs   # ZIP 索引・自然順・読み出し、エントリのストリーム展開
-├── open.rs      # 形式判定・エントリ
-├── decoder.rs   # JPEG / PNG / WebP / BMP デコード
-├── disk_cache.rs # 展開済みページのディスクキャッシュ（手動削除）
-├── prefetch.rs  # ワーカースレッドと優先度付きジョブ（winit非依存）
-├── menu.rs      # Windows / macOS のネイティブメニュー（共通レイアウト）
-└── view.rs      # フィット・見開き配置・0RGB 描画
+└── headless.rs  # GUIなしの list / check / render-page
 
 tests/
 ├── common/mod.rs

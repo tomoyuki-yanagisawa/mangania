@@ -1,21 +1,13 @@
 pub mod app;
 pub mod archive;
-pub mod bindings;
-pub mod cache;
 pub mod cli;
-pub(crate) mod click;
 pub mod config;
 pub(crate) mod debug_log;
-pub mod decoder;
-pub mod disk_cache;
 pub(crate) mod event;
 pub mod export;
 pub mod headless;
-#[cfg(any(target_os = "windows", target_os = "macos"))]
-pub(crate) mod menu;
-pub mod navigation;
-pub mod open;
+pub mod input;
 pub(crate) mod platform;
-pub mod prefetch;
-pub mod view;
-pub(crate) mod viewer;
+pub mod render;
+pub mod storage;
+pub(crate) mod ui;

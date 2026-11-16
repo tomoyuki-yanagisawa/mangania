@@ -1,7 +1,7 @@
 mod common;
 
 use image::ImageFormat;
-use mangania::decoder;
+use mangania::archive::decoder;
 
 #[test]
 fn decodes_png_jpeg_and_bmp() {

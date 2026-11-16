@@ -3,8 +3,8 @@ mod common;
 use std::time::{Duration, Instant};
 
 use mangania::archive::Archive;
-use mangania::disk_cache::DiskCache;
-use mangania::prefetch::Prefetch;
+use mangania::render::prefetch::Prefetch;
+use mangania::storage::disk_cache::DiskCache;
 
 #[test]
 fn prefetches_without_a_winit_event_loop() {

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use image::RgbaImage;
-use mangania::cache::{ScaledCache, ScaledKey};
 use mangania::config::ScaleFilter;
+use mangania::render::cache::{ScaledCache, ScaledKey};
 
 fn image(width: u32, height: u32) -> Arc<RgbaImage> {
     Arc::new(RgbaImage::new(width, height))
