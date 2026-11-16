@@ -8,7 +8,7 @@ use image::RgbaImage;
 
 use crate::archive::Archive;
 use crate::debug_log;
-use crate::decoder;
+use crate::disk_cache::DiskCache;
 
 struct Job {
     page: usize,
@@ -33,7 +33,11 @@ pub struct Prefetch {
 
 impl Prefetch {
     /// Takes ownership of the archive so ZIP reads and decodes never block the UI thread.
-    pub fn start(archive: Archive, notify: impl Fn() -> bool + Send + 'static) -> Self {
+    pub fn start(
+        archive: Archive,
+        cache: DiskCache,
+        notify: impl Fn() -> bool + Send + 'static,
+    ) -> Self {
         let shared = Arc::new(Shared {
             queue: Mutex::new(Queue {
                 jobs: VecDeque::new(),
@@ -46,6 +50,7 @@ impl Prefetch {
         thread::spawn(move || {
             debug_log::log(format_args!("worker: started"));
             let mut archive = archive;
+            let cache = cache;
             loop {
                 let job = {
                     let mut queue = worker_shared.queue.lock().unwrap();
@@ -68,21 +73,13 @@ impl Prefetch {
                     job.entry
                 ));
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let bytes = archive.read_index(job.entry)?;
-                    debug_log::log(format_args!(
-                        "job read: page={} bytes={} in {:.1}ms",
-                        job.page + 1,
-                        bytes.len(),
-                        started.elapsed().as_secs_f64() * 1000.0
-                    ));
-                    let decode_start = Instant::now();
-                    let image = decoder::decode(&bytes)?;
+                    let image = cache.decode_page(&mut archive, job.page)?;
                     debug_log::log(format_args!(
                         "job decode: page={} {}x{} in {:.1}ms",
                         job.page + 1,
                         image.width(),
                         image.height(),
-                        decode_start.elapsed().as_secs_f64() * 1000.0
+                        started.elapsed().as_secs_f64() * 1000.0
                     ));
                     Ok(Arc::new(image))
                 }));

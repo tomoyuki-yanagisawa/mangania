@@ -96,7 +96,7 @@ impl Entry {
             path.display(),
             len
         ));
-        match Archive::from_file(file) {
+        match Archive::from_file(file, &path) {
             Ok(archive) => Ok(Self { path, archive }),
             Err(error) => Err(open_error(&path, format, len, &error)),
         }
@@ -112,16 +112,6 @@ impl Entry {
 
     pub fn page_name(&self, page: usize) -> Option<&str> {
         self.archive.pages.get(page).map(|page| page.name.as_str())
-    }
-
-    pub fn read_page(&mut self, page: usize) -> Result<Vec<u8>, String> {
-        let entry = self
-            .archive
-            .pages
-            .get(page)
-            .ok_or_else(|| format!("page {} is out of range", page + 1))?
-            .entry;
-        self.archive.read_index(entry)
     }
 }
 

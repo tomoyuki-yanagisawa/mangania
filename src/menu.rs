@@ -11,6 +11,7 @@ use crate::event::UserEvent;
 
 pub struct MenuBar {
     pub save: MenuItem,
+    pub clear_cache: MenuItem,
     pub next: MenuItem,
     pub prev: MenuItem,
     pub first: MenuItem,
@@ -41,6 +42,9 @@ impl MenuBar {
         let file = Submenu::new("ファイル", true);
         let save = MenuItem::new("表示中のページを保存", true, None);
         let _ = file.append(&save);
+        let _ = file.append(&PredefinedMenuItem::separator());
+        let clear_cache = MenuItem::new("キャッシュを削除", true, None);
+        let _ = file.append(&clear_cache);
         let _ = menu.append(&file);
 
         let navigation = Submenu::new("移動", true);
@@ -84,6 +88,7 @@ impl MenuBar {
 
         Self {
             save,
+            clear_cache,
             next,
             prev,
             first,
@@ -118,6 +123,10 @@ impl MenuBar {
         } else {
             None
         }
+    }
+
+    pub fn is_clear_cache(&self, id: &MenuId) -> bool {
+        id == self.clear_cache.id()
     }
 
     pub fn filter_for(&self, id: &MenuId) -> Option<ScaleFilter> {

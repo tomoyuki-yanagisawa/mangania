@@ -1,7 +1,8 @@
 use std::cmp::Ordering;
 use std::fs::File;
-use std::io::Read;
-use std::path::{Component, Path};
+use std::io::{Read, Write};
+use std::path::{Component, Path, PathBuf};
+use std::time::SystemTime;
 
 use zip::ZipArchive;
 
@@ -13,6 +14,9 @@ const MAX_ENTRY_BYTES: u64 = 512 * 1024 * 1024;
 pub struct Archive {
     zip: ZipArchive<File>,
     pub pages: Vec<Page>,
+    pub(crate) path: PathBuf,
+    pub(crate) size: u64,
+    pub(crate) modified: Option<SystemTime>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,20 +25,25 @@ pub struct Page {
     pub entry: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EntryInfo {
+    pub size: u64,
+    pub crc32: u32,
+}
+
 impl Archive {
     /// Opens a ZIP archive from a path. Format detection and shortcut
     /// resolution belong to [`crate::open`].
     pub fn open(path: &Path) -> Result<Self, String> {
         let file = File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
-        Self::from_file(file)
+        Self::from_file(file, path)
     }
 
     /// Indexes a ZIP archive from an already-open file.
-    pub fn from_file(file: File) -> Result<Self, String> {
-        let file_len = file
-            .metadata()
-            .map_err(|e| format!("stat archive: {e}"))?
-            .len();
+    pub fn from_file(file: File, path: &Path) -> Result<Self, String> {
+        let metadata = file.metadata().map_err(|e| format!("stat archive: {e}"))?;
+        let file_len = metadata.len();
+        let modified = metadata.modified().ok();
         debug_log::log(format_args!("archive: size={file_len} bytes"));
         let zip = ZipArchive::new(file).map_err(|e| format!("read zip ({file_len} bytes): {e}"))?;
         if zip.len() > MAX_ENTRIES {
@@ -44,6 +53,9 @@ impl Archive {
         let mut archive = Self {
             zip,
             pages: Vec::new(),
+            path: path.to_path_buf(),
+            size: file_len,
+            modified,
         };
         let mut pages = Vec::new();
         for entry in 0..archive.zip.len() {
@@ -77,7 +89,23 @@ impl Archive {
         Ok(archive)
     }
 
-    pub fn read_index(&mut self, entry: usize) -> Result<Vec<u8>, String> {
+    /// Returns ZIP metadata used by the disk cache key and extraction path.
+    pub fn entry_info(&mut self, entry: usize) -> Result<EntryInfo, String> {
+        let file = self
+            .zip
+            .by_index(entry)
+            .map_err(|e| format!("entry {entry}: {e}"))?;
+        if file.size() > MAX_ENTRY_BYTES {
+            return Err(format!("entry {entry} is too large"));
+        }
+        Ok(EntryInfo {
+            size: file.size(),
+            crc32: file.crc32(),
+        })
+    }
+
+    /// Streams a decompressed entry into `writer` without buffering it in memory.
+    pub fn write_index<W: Write>(&mut self, entry: usize, writer: &mut W) -> Result<u64, String> {
         let file = self
             .zip
             .by_index(entry)
@@ -90,15 +118,14 @@ impl Archive {
             file.size()
         ));
 
-        // `size()` is metadata from the archive; never trust it as an allocation bound.
-        let mut data = Vec::new();
-        file.take(MAX_ENTRY_BYTES + 1)
-            .read_to_end(&mut data)
+        // `size()` is metadata from the archive; never trust it as a bound.
+        let mut limited = file.take(MAX_ENTRY_BYTES + 1);
+        let copied = std::io::copy(&mut limited, writer)
             .map_err(|e| format!("extract entry {entry}: {e}"))?;
-        if data.len() as u64 > MAX_ENTRY_BYTES {
+        if copied > MAX_ENTRY_BYTES {
             return Err(format!("entry {entry} exceeds the size limit"));
         }
-        Ok(data)
+        Ok(copied)
     }
 }
 

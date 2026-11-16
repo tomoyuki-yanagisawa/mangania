@@ -2,7 +2,7 @@ use std::error::Error;
 use std::io;
 use std::path::Path;
 
-use crate::decoder;
+use crate::disk_cache::DiskCache;
 use crate::open::Entry;
 
 pub fn list(path: &Path) -> Result<(), Box<dyn Error>> {
@@ -14,17 +14,14 @@ pub fn list(path: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn check(path: &Path) -> Result<(), Box<dyn Error>> {
+pub fn check(path: &Path, cache: &DiskCache) -> Result<(), Box<dyn Error>> {
     let mut entry = Entry::open(path).map_err(io::Error::other)?;
     let total = entry.page_count();
     let mut failed = 0;
 
     for page in 0..total {
         let name = entry.archive.pages[page].name.clone();
-        if let Err(error) = entry
-            .read_page(page)
-            .and_then(|bytes| decoder::decode(&bytes).map(|_| ()))
-        {
+        if let Err(error) = cache.decode_page(&mut entry.archive, page) {
             failed += 1;
             eprintln!("page {} ({}): {error}", page + 1, name);
         }
@@ -37,13 +34,19 @@ pub fn check(path: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn render_page(path: &Path, page: usize, output: &Path) -> Result<(), Box<dyn Error>> {
+pub fn render_page(
+    path: &Path,
+    page: usize,
+    output: &Path,
+    cache: &DiskCache,
+) -> Result<(), Box<dyn Error>> {
     let mut entry = Entry::open(path).map_err(io::Error::other)?;
     let index = page
         .checked_sub(1)
         .ok_or_else(|| io::Error::other("page must be >= 1"))?;
-    let bytes = entry.read_page(index).map_err(io::Error::other)?;
-    let image = decoder::decode(&bytes).map_err(io::Error::other)?;
+    let image = cache
+        .decode_page(&mut entry.archive, index)
+        .map_err(io::Error::other)?;
     image::DynamicImage::ImageRgba8(image).save(output)?;
     println!("wrote {}", output.display());
     Ok(())

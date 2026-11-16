@@ -1,8 +1,15 @@
 mod common;
 
+use std::path::Path;
+
 use image::ImageFormat;
 use mangania::config::Config;
+use mangania::disk_cache::DiskCache;
 use mangania::export;
+
+fn cache_for(archive_path: &Path) -> DiskCache {
+    DiskCache::new(archive_path.parent().unwrap().join("cache"))
+}
 
 #[test]
 fn expands_placeholders() {
@@ -37,7 +44,8 @@ fn saves_original_entry_bytes() {
         ..Config::default()
     };
 
-    let output = export::save_current_page(&archive_path, 0, &config).unwrap();
+    let cache = cache_for(&archive_path);
+    let output = export::save_current_page(&archive_path, 0, &config, &cache).unwrap();
 
     assert_eq!(output, out_dir.join("book_001_001.png"));
     assert_eq!(std::fs::read(&output).unwrap(), image);
@@ -55,7 +63,8 @@ fn saves_original_bmp_bytes_and_extension() {
         ..Config::default()
     };
 
-    let output = export::save_current_page(&archive_path, 0, &config).unwrap();
+    let cache = cache_for(&archive_path);
+    let output = export::save_current_page(&archive_path, 0, &config, &cache).unwrap();
 
     assert_eq!(output, out_dir.join("book_001_001.bmp"));
     assert_eq!(std::fs::read(&output).unwrap(), image);
@@ -76,7 +85,8 @@ fn saves_sorted_page_with_matching_name_and_bytes() {
         ..Config::default()
     };
 
-    let output = export::save_current_page(&archive_path, 0, &config).unwrap();
+    let cache = cache_for(&archive_path);
+    let output = export::save_current_page(&archive_path, 0, &config, &cache).unwrap();
     assert_eq!(output, out_dir.join("1_2.png"));
     assert_eq!(std::fs::read(output).unwrap(), b"two");
     common::cleanup(&archive_path);
