@@ -36,7 +36,7 @@
 | --- | --- | --- | --- | --- | --- |
 | [500](500.md) | dirs に依存しないクロスプラットフォームな設定パス解決を考える | proposed | P2 | M | config |
 | [501](501.md) | Windows の全画面表示でメニューバーを隠す | proposed | P2 | S | Windows / UI |
-| [502](502.md) | Windows で exe 起動時の黒いコンソールを止める | proposed | P1 | M | Windows / build |
+| [502](502.md) | Windows で exe 起動時の黒いコンソールを止める | in-progress | P1 | M | Windows / build |
 | [503](503.md) | archive.rs から Windows ショートカット解決を分離する | done | P2 | S | refactor |
 | [504](504.md) | 画像の縮小アルゴリズムを設定できるようにする | in-progress | P2 | M | view / config |
 
