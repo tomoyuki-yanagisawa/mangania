@@ -1,11 +1,18 @@
+use std::cell::RefCell;
 use std::sync::Arc;
 use std::time::Instant;
 
+use fast_image_resize::{FilterType, ResizeAlg, ResizeOptions, Resizer};
 use image::RgbaImage;
 
 use crate::config::ScaleFilter;
 use crate::debug_log;
 use crate::render::cache::{ScaledCache, ScaledKey};
+
+thread_local! {
+    /// Reused so repeated page resizes do not reallocate internal buffers.
+    static RESIZER: RefCell<Resizer> = RefCell::new(Resizer::new());
+}
 
 const BACKGROUND: u32 = 0x20_20_20;
 
@@ -69,12 +76,25 @@ pub(crate) fn resized(
     filter: ScaleFilter,
 ) -> Arc<RgbaImage> {
     let start = Instant::now();
-    let resized = Arc::new(image::imageops::resize(
-        image,
-        target.0,
-        target.1,
-        filter.to_filter_type(),
-    ));
+    let mut output = RgbaImage::new(target.0, target.1);
+    let options = ResizeOptions::new()
+        .resize_alg(resize_algorithm(filter))
+        .use_alpha(false);
+    let result = RESIZER.with(|resizer| resizer.borrow_mut().resize(image, &mut output, &options));
+    let resized = match result {
+        Ok(()) => Arc::new(output),
+        Err(error) => {
+            debug_log::log(format_args!(
+                "view: fast resize failed ({error}); using the image crate"
+            ));
+            Arc::new(image::imageops::resize(
+                image,
+                target.0,
+                target.1,
+                filter.to_filter_type(),
+            ))
+        }
+    };
     debug_log::log(format_args!(
         "view: resize {}x{} -> {}x{} filter={} in {:.1}ms",
         image.width(),
@@ -85,6 +105,16 @@ pub(crate) fn resized(
         start.elapsed().as_secs_f64() * 1000.0
     ));
     resized
+}
+
+fn resize_algorithm(filter: ScaleFilter) -> ResizeAlg {
+    match filter {
+        ScaleFilter::Nearest => ResizeAlg::Nearest,
+        ScaleFilter::Triangle => ResizeAlg::Convolution(FilterType::Bilinear),
+        ScaleFilter::CatmullRom => ResizeAlg::Convolution(FilterType::CatmullRom),
+        ScaleFilter::Gaussian => ResizeAlg::Convolution(FilterType::Gaussian),
+        ScaleFilter::Lanczos3 => ResizeAlg::Convolution(FilterType::Lanczos3),
+    }
 }
 
 /// Fits the given pages side by side and reuses resized pages from `cache`.
@@ -202,6 +232,29 @@ fn blit(
         let (pixels, _) = source_row.as_chunks::<4>();
         for (dest, pixel) in dest_row.iter_mut().zip(pixels) {
             *dest = (u32::from(pixel[0]) << 16) | (u32::from(pixel[1]) << 8) | u32::from(pixel[2]);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use image::{Rgba, RgbaImage};
+
+    use super::resized;
+    use crate::config::ScaleFilter;
+
+    #[test]
+    fn resizes_with_every_filter() {
+        let image = RgbaImage::from_pixel(7, 5, Rgba([10, 20, 30, 255]));
+
+        for filter in ScaleFilter::ALL {
+            let output = resized(&image, (3, 2), filter);
+            assert_eq!(output.dimensions(), (3, 2), "{}", filter.as_str());
+            assert!(
+                output.pixels().all(|pixel| pixel.0 == [10, 20, 30, 255]),
+                "{}",
+                filter.as_str()
+            );
         }
     }
 }

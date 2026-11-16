@@ -4,6 +4,7 @@ version = "0.1.7"
 edition = "2024"
 
 [dependencies]
+fast_image_resize = { version = "6.1.0", features = ["image"] }
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "bmp"] }
 serde = { version = "1.0.229", features = ["derive"] }
 softbuffer = "0.4.8"
