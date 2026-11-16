@@ -283,7 +283,16 @@ cargo +nightly build -Z build-std --target x86_64-win7-windows-msvc --release
 src/
 ├── lib.rs       # ライブラリ入口（コアAPI）
 ├── main.rs      # CLI
-├── app.rs       # winit イベントループ、D&D、UI
+├── app/
+│   ├── mod.rs   # run、App、イベントループ
+│   ├── draw.rs  # 描画、ビューポート、画像受信
+│   ├── input.rs # ナビゲーション、クリック、キー
+│   ├── open.rs  # アーカイブを開く、ページ保存
+│   └── window.rs # 全画面、メニュー、縮小フィルタ操作
+├── platform/
+│   └── windows/
+│       ├── menu.rs     # HWND / HMENU とメニュー表示
+│       └── shortcut.rs # .lnk の COM 解決
 ├── click.rs     # クリック・ダブルクリック判定
 ├── viewer.rs    # Viewer: ページ、現在位置、表示サイズキャッシュ、Prefetch要求
 ├── cache.rs     # 表示サイズ画像の上限付きキャッシュ（現在ページからの距離で破棄）
@@ -298,11 +307,11 @@ src/
 ├── export.rs    # 表示中ページの保存、ファイル名テンプレート
 ├── headless.rs  # GUIなしの list / check / render-page
 ├── archive.rs   # ZIP 索引・自然順・読み出し、エントリのストリーム展開
-├── open.rs      # パス解決（.lnk）・形式判定・エントリ
+├── open.rs      # 形式判定・エントリ
 ├── decoder.rs   # JPEG / PNG / WebP / BMP デコード
-├── disk_cache.rs # 展開済みページのディスクキャッシュ（上限・LRU削除）
+├── disk_cache.rs # 展開済みページのディスクキャッシュ（手動削除）
 ├── prefetch.rs  # ワーカースレッドと優先度付きジョブ（winit非依存）
-├── menu.rs      # Windows / macOS のネイティブメニュー
+├── menu.rs      # Windows / macOS のネイティブメニュー（共通レイアウト）
 └── view.rs      # フィット・見開き配置・0RGB 描画
 
 tests/
