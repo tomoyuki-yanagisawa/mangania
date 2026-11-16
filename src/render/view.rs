@@ -3,9 +3,9 @@ use std::time::Instant;
 
 use image::RgbaImage;
 
-use crate::cache::{ScaledCache, ScaledKey};
 use crate::config::ScaleFilter;
 use crate::debug_log;
+use crate::render::cache::{ScaledCache, ScaledKey};
 
 const BACKGROUND: u32 = 0x20_20_20;
 

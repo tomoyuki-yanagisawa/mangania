@@ -6,9 +6,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use image::RgbaImage;
 
+use crate::archive::decoder;
 use crate::archive::{Archive, EntryInfo};
 use crate::debug_log;
-use crate::decoder;
 
 const TEMP_PREFIX: &str = ".mangania-tmp-";
 

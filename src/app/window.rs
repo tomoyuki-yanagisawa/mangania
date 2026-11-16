@@ -8,7 +8,7 @@ use crate::config::ScaleFilter;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::debug_log;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
-use crate::disk_cache::DiskCache;
+use crate::storage::disk_cache::DiskCache;
 
 use super::App;
 

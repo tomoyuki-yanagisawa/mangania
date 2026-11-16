@@ -2,7 +2,7 @@ pub enum UserEvent {
     ImageReady,
     Opened {
         generation: u64,
-        result: Result<crate::open::Entry, String>,
+        result: Result<crate::archive::open::Entry, String>,
     },
     Saved {
         generation: u64,

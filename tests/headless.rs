@@ -2,8 +2,8 @@ mod common;
 
 use std::path::Path;
 
-use mangania::disk_cache::DiskCache;
 use mangania::headless;
+use mangania::storage::disk_cache::DiskCache;
 
 fn cache_for(archive_path: &Path) -> DiskCache {
     DiskCache::new(archive_path.parent().unwrap().join("cache"))

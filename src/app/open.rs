@@ -1,12 +1,12 @@
 use std::path::{Path, PathBuf};
 
+use crate::archive::open::Entry;
 use crate::debug_log;
-use crate::disk_cache::DiskCache;
 use crate::event::UserEvent;
 use crate::export;
-use crate::open::Entry;
-use crate::prefetch::Prefetch;
-use crate::viewer::Viewer;
+use crate::render::prefetch::Prefetch;
+use crate::render::viewer::Viewer;
+use crate::storage::disk_cache::DiskCache;
 
 use super::App;
 

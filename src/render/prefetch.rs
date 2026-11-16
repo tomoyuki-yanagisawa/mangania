@@ -8,7 +8,7 @@ use image::RgbaImage;
 
 use crate::archive::Archive;
 use crate::debug_log;
-use crate::disk_cache::DiskCache;
+use crate::storage::disk_cache::DiskCache;
 
 struct Job {
     page: usize,

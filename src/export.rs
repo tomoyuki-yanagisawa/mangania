@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
+use crate::archive::open::Entry;
 use crate::config::{Config, DEFAULT_EXPORT_NAME};
-use crate::disk_cache::DiskCache;
-use crate::open::Entry;
+use crate::storage::disk_cache::DiskCache;
 
 pub fn save_current_page(
     archive_path: &Path,

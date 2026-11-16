@@ -2,8 +2,8 @@ use std::error::Error;
 use std::io;
 use std::path::Path;
 
-use crate::disk_cache::DiskCache;
-use crate::open::Entry;
+use crate::archive::open::Entry;
+use crate::storage::disk_cache::DiskCache;
 
 pub fn list(path: &Path) -> Result<(), Box<dyn Error>> {
     let entry = Entry::open(path).map_err(io::Error::other)?;

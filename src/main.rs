@@ -5,8 +5,8 @@ use std::path::PathBuf;
 
 use mangania::app;
 use mangania::cli::{self, Mode};
-use mangania::disk_cache::DiskCache;
 use mangania::headless;
+use mangania::storage::disk_cache::DiskCache;
 
 const USAGE: &str = "\
 usage: mangania [--prefetch N] [--list | --check | --render-page PAGE OUTPUT] [ARCHIVE]

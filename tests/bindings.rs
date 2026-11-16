@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use mangania::bindings::{
+use mangania::input::bindings::{
     Action, DEFAULT_KEYBINDINGS, DEFAULT_MOUSE, KeyBindings, MouseBindings, MouseInput,
     WheelDirection,
 };

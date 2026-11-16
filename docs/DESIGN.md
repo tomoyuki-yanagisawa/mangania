@@ -33,21 +33,21 @@ ZIP 内の漫画画像を高速に読むための、小さなネイティブビ�
 | `main.rs` | CLI の入口 |
 | `cli.rs` | 引数解析 |
 | `app/` | winit イベントループ、App 状態、描画、入力、ファイル操作、ウィンドウ操作 |
+| `archive/mod.rs` | ZIP 索引、自然順、安全なエントリ読み出し（ZIP のみ） |
+| `archive/open.rs` | 形式判定、アプリ共通のエントリ API |
+| `archive/decoder.rs` | JPEG / PNG / WebP / BMP のデコード（メモリとファイル） |
+| `render/viewer.rs` | 現在ページ、ページ一覧、表示サイズキャッシュ、先読み要求 |
+| `render/cache.rs` | 表示サイズ画像の上限付きキャッシュ（現在ページからの距離で破棄） |
+| `render/prefetch.rs` | ワーカースレッド、優先度付きジョブ、通知 |
+| `render/view.rs` | フィット・見開き配置・0RGB バッファへの描画 |
+| `input/click.rs` | シングル / ダブルクリックの判定と保留状態 |
+| `input/navigation.rs` | ページ移動の純粋関数 |
+| `input/bindings/` | アクション定義、キー・マウス割り当ての TOML 読み書き |
+| `storage/disk_cache.rs` | 展開済み ZIP エントリのディスクキャッシュ（キー、原子書き込み、手動削除） |
+| `ui/menu.rs` | Windows / macOS のネイティブメニュー（共通レイアウト） |
 | `platform/windows/` | Windows 固有の Win32 / COM 処理（メニュー、ショートカット） |
-| `click.rs` | シングル / ダブルクリックの判定と保留状態 |
-| `viewer.rs` | 現在ページ、ページ一覧、表示サイズキャッシュ、先読み要求 |
-| `cache.rs` | 表示サイズ画像の上限付きキャッシュ（現在ページからの距離で破棄） |
-| `navigation.rs` | ページ移動の純粋関数 |
-| `archive.rs` | ZIP 索引、自然順、安全なエントリ読み出し（ZIP のみ） |
-| `open.rs` | 形式判定、アプリ共通のエントリ API |
-| `decoder.rs` | JPEG / PNG / WebP / BMP のデコード（メモリとファイル） |
-| `disk_cache.rs` | 展開済み ZIP エントリのディスクキャッシュ（キー、原子書き込み、手動削除） |
-| `prefetch.rs` | ワーカースレッド、優先度付きジョブ、通知 |
-| `view.rs` | フィット・見開き配置・0RGB バッファへの描画 |
 | `config.rs` | 一般設定の TOML 読み書き |
-| `bindings/` | アクション定義、キー・マウス割り当ての TOML 読み書き |
 | `export.rs` | 表示中ページの保存、ファイル名テンプレート |
-| `menu.rs` | Windows / macOS のネイティブメニュー（共通レイアウト） |
 | `headless.rs` | GUI なしの `--list` / `--check` / `--render-page` |
 | `event.rs` | ワーカー / メニューから UI へのイベント |
 
@@ -66,14 +66,14 @@ UI スレッド: ウィンドウに合わせた表示サイズへ縮小 → 原�
   ↓
 Viewer の表示サイズキャッシュ（現在ページ＋先読み）
   ↓
-view::render_pages_cached
+render::view::render_pages_cached
   ↓
 softbuffer のピクセルバッファ
 ```
 
 ## 5. ZIP とページモデル
 
-- `open::Entry::open` が Windows ショートカットを解決し、形式を判定してから ZIP を開きます。
+- `archive::open::Entry::open` が Windows ショートカットを解決し、形式を判定してから ZIP を開きます。
 - `zip` crate で ZIP / CBZ を読みます。Stored / Deflate に対応し、RAR / 7z は検出して明示的なエラーにします。
 - `Archive` は Central Directory の索引化とページ読み出しだけを担当し、画像エントリを自然順に並べます。
 - `Entry` は解決済みのパスを保持するため、アプリは保存時に同じパスを再利用できます。
@@ -107,7 +107,7 @@ softbuffer のピクセルバッファ
 ## 7. 描画
 
 - ワーカーから届くデコード結果は `RgbaImage` です。UI 側で表示サイズへ縮小し、原寸は保持しません。
-- `view::render_pages_cached` が単ページ・見開きを同じスケール計算でフィットし、0RGB の `u32` バッファへ描画します。配置は原寸の縦横比、描画は表示サイズのプレビューを使います。見開きの正確なサイズもキャッシュします。
+- `render::view::render_pages_cached` が単ページ・見開きを同じスケール計算でフィットし、0RGB の `u32` バッファへ描画します。配置は原寸の縦横比、描画は表示サイズのプレビューを使います。見開きの正確なサイズもキャッシュします。
 - 背景色は `0x202020` です。
 - 見開きでは左ページを先に、右ページを次に描画します（配置は右→左）。
 - 次ページの準備中は直前のフレームを保持し、暗転を防ぎます。
@@ -115,7 +115,7 @@ softbuffer のピクセルバッファ
 
 ## 8. 入力
 
-- `bindings::Action` をメニュー・キーボード・マウスで共有します。
+- `input::bindings::Action` をメニュー・キーボード・マウスで共有します。
 - キー割り当ては `keybindings.toml`、マウス割り当ては `mouse.toml` で変更できます。
 - `next_single` / `prev_single` は1ページ単位で移動します。見開き中は開始ページを1つずらし、その後の2ページ送りは同じ偶奇を保ちます。
 - 中クリックは既定で `next_single` に割り当てています。

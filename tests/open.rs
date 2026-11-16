@@ -2,7 +2,7 @@ mod common;
 
 use std::path::Path;
 
-use mangania::open::{self, Entry, Format};
+use mangania::archive::open::{self, Entry, Format};
 
 fn open_error(path: &Path) -> String {
     match Entry::open(path) {

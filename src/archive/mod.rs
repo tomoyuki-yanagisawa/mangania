@@ -1,3 +1,6 @@
+pub mod decoder;
+pub mod open;
+
 use std::cmp::Ordering;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -33,7 +36,7 @@ pub struct EntryInfo {
 
 impl Archive {
     /// Opens a ZIP archive from a path. Format detection and shortcut
-    /// resolution belong to [`crate::open`].
+    /// resolution belong to [`crate::archive::open`].
     pub fn open(path: &Path) -> Result<Self, String> {
         let file = File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
         Self::from_file(file, path)
