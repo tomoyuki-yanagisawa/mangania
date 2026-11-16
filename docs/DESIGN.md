@@ -105,7 +105,7 @@ softbuffer のピクセルバッファ
 - ページ移動ではキャッシュをクリアしません。近いページのプレビューを再利用し、新しい挿入は移動後の現在ページを基準に距離を計算します。
 - キャッシュから破棄されたページは、現在位置に応じて再び先読みの対象になります。表示中のページは、ウィンドウ用プレビューが破棄されても正確なサイズの画像が残っていればそれを使います。
 - ウィンドウサイズまたは縮小フィルタが変わるとキャッシュをクリアし、現在ページと見開きの相手を再要求します。この場合は再デコードが発生します。
-- 縮小は `fast_image_resize` の SIMD 実装を使い、失敗時は `image` crate の縮小へフォールバックします。フィルタは nearest / bilinear（triangle）/ catmull_rom / gaussian / lanczos3 に対応します。
+- 縮小は `fast_image_resize` の SIMD 実装を使います。RGBA8 と非ゼロの表示サイズだけを扱うため、縮小処理は失敗しない前提です。フィルタは nearest / bilinear（triangle）/ hamming / catmull_rom / mitchell / gaussian / lanczos3 に対応します。
 
 ## 7. 描画
 

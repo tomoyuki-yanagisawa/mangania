@@ -10,6 +10,7 @@ use crate::debug_log;
 use crate::input::navigation;
 use crate::render::cache::{ScaledCache, ScaledKey};
 use crate::render::prefetch::Prefetch;
+use crate::render::resize::resized;
 use crate::render::view;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -228,7 +229,7 @@ impl Viewer {
         let preview = if target == image.dimensions() {
             image
         } else {
-            view::resized(&image, target, self.viewport.filter)
+            resized(&image, target, self.viewport.filter)
         };
         let preview_size = preview.dimensions();
         let key = ScaledKey::new(page, preview_size.0, preview_size.1, self.viewport.filter);
