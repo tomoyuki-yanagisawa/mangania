@@ -84,9 +84,12 @@ pub(crate) struct Viewer {
     pub(crate) prefetch: Prefetch,
     pub(crate) cache: ScaledCache,
     pub(crate) errors: HashMap<usize, String>,
-    previews: HashMap<usize, ScaledKey>,
     sizes: HashMap<usize, (u32, u32)>,
-    attempted: HashSet<usize>,
+    /// Pages whose decoded image could not be kept in the cache. Prefetch
+    /// skips them so it does not decode the same page in a loop. Pages that
+    /// were cached and later evicted are not listed, so a later prefetch can
+    /// request them again.
+    rejected: HashSet<usize>,
     depth: usize,
     viewport: Viewport,
 }
@@ -109,9 +112,8 @@ impl Viewer {
             prefetch,
             cache: ScaledCache::new(cache_limits.entries, cache_limits.bytes),
             errors: HashMap::new(),
-            previews: HashMap::new(),
             sizes: HashMap::new(),
-            attempted: HashSet::new(),
+            rejected: HashSet::new(),
             depth,
             viewport,
         }
@@ -153,8 +155,7 @@ impl Viewer {
         }
         self.viewport = viewport;
         self.cache.clear();
-        self.previews.clear();
-        self.attempted.clear();
+        self.rejected.clear();
         debug_log::log(format_args!(
             "viewer: viewport {}x{} filter={} cache cleared",
             width,
@@ -190,11 +191,11 @@ impl Viewer {
     }
 
     fn needs_request(&self, page: usize) -> bool {
-        page < self.pages.len() && !self.has_preview(page) && !self.errors.contains_key(&page)
+        page < self.pages.len() && !self.has_cached_page(page) && !self.errors.contains_key(&page)
     }
 
     fn request(&mut self, page: usize) {
-        if !self.needs_request(page) || self.attempted.contains(&page) {
+        if !self.needs_request(page) || self.rejected.contains(&page) {
             return;
         }
         let page_info = &self.pages[page];
@@ -205,7 +206,6 @@ impl Viewer {
     /// Resizes an arrived decoded page to the current window preview, caches
     /// the display image and drops the decoded original.
     pub(crate) fn insert_decoded(&mut self, page: usize, image: Arc<RgbaImage>) {
-        self.attempted.insert(page);
         let (width, height) = image.dimensions();
         let target = view::fit(
             width,
@@ -214,7 +214,7 @@ impl Viewer {
             self.viewport.height as usize,
         );
         if target.0 == 0 || target.1 == 0 {
-            self.previews.remove(&page);
+            self.rejected.insert(page);
             debug_log::log(format_args!(
                 "viewer: skip empty preview page={} source={}x{}",
                 page + 1,
@@ -236,9 +236,9 @@ impl Viewer {
         let keep = [self.current, next];
         let retained = self.cache.insert(key, preview, &keep, self.current);
         if retained {
-            self.previews.insert(page, key);
+            self.rejected.remove(&page);
         } else {
-            self.previews.remove(&page);
+            self.rejected.insert(page);
         }
         debug_log::log(format_args!(
             "viewer: preview page={} {}x{} -> {}x{} filter={} cached={retained}",
@@ -251,19 +251,19 @@ impl Viewer {
         ));
     }
 
-    fn has_preview(&self, page: usize) -> bool {
-        self.previews
-            .get(&page)
-            .is_some_and(|key| self.cache.get(*key).is_some())
+    fn has_cached_page(&self, page: usize) -> bool {
+        self.cache.contains_page(page, self.viewport.filter)
     }
 
     pub(crate) fn has_page(&self, page: usize) -> bool {
-        self.has_preview(page)
+        self.has_cached_page(page)
     }
 
+    /// Returns the largest cached image for a page. If the window preview was
+    /// evicted but the exact spread-size image survived, drawing can still use
+    /// it instead of decoding the page again.
     fn visible(&self, page: usize) -> Option<VisiblePage> {
-        let key = *self.previews.get(&page)?;
-        let image = self.cache.get(key)?;
+        let image = self.cache.get_page(page, self.viewport.filter)?;
         let original_size = *self.sizes.get(&page)?;
         Some(VisiblePage {
             index: page,

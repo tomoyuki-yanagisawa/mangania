@@ -22,6 +22,27 @@ fn insert(cache: &mut ScaledCache, page: usize, size: u32, keep: &[usize], curre
 }
 
 #[test]
+fn get_page_prefers_the_largest_image_for_the_page() {
+    let mut cache = ScaledCache::new(4, usize::MAX);
+    assert!(cache.insert(
+        ScaledKey::new(1, 2, 2, ScaleFilter::Triangle),
+        image(2, 2),
+        &[],
+        0
+    ));
+    assert!(cache.insert(
+        ScaledKey::new(1, 4, 4, ScaleFilter::Triangle),
+        image(4, 4),
+        &[],
+        0
+    ));
+
+    let page = cache.get_page(1, ScaleFilter::Triangle).unwrap();
+    assert_eq!(page.dimensions(), (4, 4));
+    assert!(cache.get_page(1, ScaleFilter::Nearest).is_none());
+}
+
+#[test]
 fn evicts_farthest_page_from_the_current_page_first() {
     let mut cache = ScaledCache::new(3, usize::MAX);
     assert!(insert(&mut cache, 5, 4, &[], 10));
