@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use mangania::app;
 use mangania::cli::{self, Mode};
+use mangania::disk_cache::DiskCache;
 use mangania::headless;
 
 const USAGE: &str = "\
@@ -44,9 +45,13 @@ fn run(args: cli::Args) -> Result<(), Box<dyn Error>> {
         }
         Mode::Gui => app::run(args.path, args.prefetch),
         Mode::List => headless::list(&required_path(args.path)?),
-        Mode::Check => headless::check(&required_path(args.path)?),
+        Mode::Check => {
+            let cache = DiskCache::default();
+            headless::check(&required_path(args.path)?, &cache)
+        }
         Mode::Render { page, output } => {
-            headless::render_page(&required_path(args.path)?, page, &output)
+            let cache = DiskCache::default();
+            headless::render_page(&required_path(args.path)?, page, &output, &cache)
         }
     }
 }

@@ -32,7 +32,9 @@ fn indexes_images_in_natural_order_and_skips_unsafe_entries() {
         b"ten".as_slice(),
         b"one".as_slice(),
     ]) {
-        assert_eq!(archive.read_index(entry).unwrap(), expected);
+        let mut bytes = Vec::new();
+        archive.write_index(entry, &mut bytes).unwrap();
+        assert_eq!(bytes, expected);
     }
 
     common::cleanup(&path);

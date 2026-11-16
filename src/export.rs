@@ -1,19 +1,20 @@
 use std::path::{Path, PathBuf};
 
 use crate::config::{Config, DEFAULT_EXPORT_NAME};
+use crate::disk_cache::DiskCache;
 use crate::open::Entry;
 
 pub fn save_current_page(
     archive_path: &Path,
     page: usize,
     config: &Config,
+    cache: &DiskCache,
 ) -> Result<PathBuf, String> {
     let mut entry = Entry::open(archive_path)?;
     let entry_name = entry
         .page_name(page)
         .map(str::to_owned)
         .ok_or_else(|| "page out of range".to_string())?;
-    let bytes = entry.read_page(page)?;
 
     let book = entry
         .path
@@ -40,8 +41,7 @@ pub fn save_current_page(
     std::fs::create_dir_all(&directory)
         .map_err(|error| format!("create {}: {error}", directory.display()))?;
     let output = directory.join(format!("{stem}.{extension}"));
-    std::fs::write(&output, bytes)
-        .map_err(|error| format!("write {}: {error}", output.display()))?;
+    cache.write_entry_to(&mut entry.archive, page, &output)?;
     Ok(output)
 }
 

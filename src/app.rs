@@ -17,6 +17,7 @@ use crate::config::Config;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::config::ScaleFilter;
 use crate::debug_log;
+use crate::disk_cache::DiskCache;
 use crate::event::UserEvent;
 use crate::export;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
@@ -155,7 +156,8 @@ impl App {
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| resolved_path.display().to_string());
                 let proxy = self.proxy.clone();
-                let prefetch = Prefetch::start(archive, move || {
+                let cache = DiskCache::default();
+                let prefetch = Prefetch::start(archive, cache, move || {
                     proxy.send_event(UserEvent::ImageReady).is_ok()
                 });
                 self.viewer = Some(Viewer::new(
@@ -370,7 +372,8 @@ impl App {
         self.status = Some("saving...".to_string());
         self.update_title();
         std::thread::spawn(move || {
-            let result = export::save_current_page(&path, page, &config);
+            let cache = DiskCache::default();
+            let result = export::save_current_page(&path, page, &config, &cache);
             let _ = proxy.send_event(UserEvent::Saved { generation, result });
         });
     }
@@ -647,6 +650,24 @@ impl App {
     }
 
     #[cfg(any(target_os = "windows", target_os = "macos"))]
+    fn clear_disk_cache(&mut self) {
+        let cache = DiskCache::default();
+        match cache.clear() {
+            Ok(()) => {
+                debug_log::log(format_args!("disk cache: cleared by menu"));
+                self.status = Some("disk cache cleared".to_string());
+            }
+            Err(error) => {
+                eprintln!("mangania: {error}");
+                debug_log::log(format_args!("disk cache: clear failed: {error}"));
+                self.status = Some(format!("cache clear error: {error}"));
+            }
+        }
+        self.update_title();
+        self.request_redraw();
+    }
+
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     fn handle_menu(&mut self, event: muda::MenuEvent, event_loop: &ActiveEventLoop) {
         let filter = self
             .menu
@@ -656,6 +677,15 @@ impl App {
             self.set_scale_filter(filter);
             return;
         }
+        if self
+            .menu
+            .as_ref()
+            .is_some_and(|menu| menu.is_clear_cache(&event.id))
+        {
+            self.clear_disk_cache();
+            return;
+        }
+
         let action = self
             .menu
             .as_ref()

@@ -11,6 +11,13 @@ fn open_error(path: &Path) -> String {
     }
 }
 
+fn page_bytes(entry: &mut Entry, page: usize) -> Vec<u8> {
+    let index = entry.archive.pages[page].entry;
+    let mut bytes = Vec::new();
+    entry.archive.write_index(index, &mut bytes).unwrap();
+    bytes
+}
+
 #[test]
 fn detects_and_opens_a_zip() {
     let path = common::temp_zip(&[("1.jpg", b"one".as_slice()), ("2.png", b"two".as_slice())]);
@@ -21,7 +28,7 @@ fn detects_and_opens_a_zip() {
     assert_eq!(entry.path, path);
     assert_eq!(entry.page_count(), 2);
     assert_eq!(entry.page_name(0), Some("1.jpg"));
-    assert_eq!(entry.read_page(1).unwrap(), b"two");
+    assert_eq!(page_bytes(&mut entry, 1), b"two");
 
     common::cleanup(&path);
 }
@@ -38,7 +45,7 @@ fn opens_a_zip_with_leading_data() {
 
     let mut entry = Entry::open(&path).unwrap();
     assert_eq!(entry.page_name(0), Some("1.jpg"));
-    assert_eq!(entry.read_page(0).unwrap(), b"one");
+    assert_eq!(page_bytes(&mut entry, 0), b"one");
 
     common::cleanup(&zip);
 }
@@ -81,7 +88,7 @@ fn resolves_windows_shortcut_to_zip() {
         std::fs::canonicalize(&zip).unwrap()
     );
     assert_eq!(entry.page_name(0), Some("1.jpg"));
-    assert_eq!(entry.read_page(0).unwrap(), b"one");
+    assert_eq!(page_bytes(&mut entry, 0), b"one");
 
     common::cleanup(&zip);
 }

@@ -28,7 +28,6 @@ fn uses_defaults_for_prefetch_and_cache() {
     assert_eq!(config.prefetch, DEFAULT_PREFETCH);
     assert_eq!(config.cache_mb, DEFAULT_CACHE_MB);
     assert_eq!(config.cache_bytes(), DEFAULT_CACHE_MB * 1024 * 1024);
-
     let empty = Config::parse("");
     assert_eq!(empty.prefetch, DEFAULT_PREFETCH);
     assert_eq!(empty.cache_mb, DEFAULT_CACHE_MB);
