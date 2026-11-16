@@ -16,12 +16,24 @@ fn indexes_images_in_natural_order_and_skips_unsafe_entries() {
     ]);
 
     let mut archive = Archive::open(&path).unwrap();
-    let names: Vec<&str> = archive.names.iter().map(String::as_str).collect();
+    let names: Vec<&str> = archive
+        .pages
+        .iter()
+        .map(|page| page.name.as_str())
+        .collect();
     assert_eq!(names, ["2.jpg", "3.bmp", "10.jpg", "dir/1.png"]);
     assert_eq!(archive.pages.len(), 4);
 
-    let first = archive.pages[0];
-    assert_eq!(archive.read_index(first).unwrap(), b"two");
+    let entries: Vec<_> = archive.pages.iter().map(|page| page.entry).collect();
+    assert_eq!(entries, [1, 3, 0, 2]);
+    for (entry, expected) in entries.into_iter().zip([
+        b"two".as_slice(),
+        b"three".as_slice(),
+        b"ten".as_slice(),
+        b"one".as_slice(),
+    ]) {
+        assert_eq!(archive.read_index(entry).unwrap(), expected);
+    }
 
     common::cleanup(&path);
 }

@@ -12,8 +12,13 @@ const MAX_ENTRY_BYTES: u64 = 512 * 1024 * 1024;
 
 pub struct Archive {
     zip: ZipArchive<File>,
-    pub names: Vec<String>,
-    pub pages: Vec<usize>,
+    pub pages: Vec<Page>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Page {
+    pub name: String,
+    pub entry: usize,
 }
 
 impl Archive {
@@ -38,7 +43,6 @@ impl Archive {
 
         let mut archive = Self {
             zip,
-            names: Vec::new(),
             pages: Vec::new(),
         };
         let mut pages = Vec::new();
@@ -57,17 +61,18 @@ impl Archive {
             if !is_page_name(&name) || file.size() > MAX_ENTRY_BYTES {
                 continue;
             }
-            pages.push((name.into_owned(), entry));
+            pages.push(Page {
+                name: name.into_owned(),
+                entry,
+            });
         }
 
-        pages.sort_by(|a, b| natural_cmp(&a.0, &b.0));
-        let (names, pages): (Vec<_>, Vec<_>) = pages.into_iter().unzip();
+        pages.sort_by(|a, b| natural_cmp(&a.name, &b.name));
         debug_log::log(format_args!(
             "archive: entries={} pages={}",
             archive.zip.len(),
             pages.len()
         ));
-        archive.names = names;
         archive.pages = pages;
         Ok(archive)
     }

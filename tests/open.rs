@@ -19,7 +19,6 @@ fn detects_and_opens_a_zip() {
 
     let mut entry = Entry::open(&path).unwrap();
     assert_eq!(entry.path, path);
-    assert_eq!(entry.format, Format::Zip);
     assert_eq!(entry.page_count(), 2);
     assert_eq!(entry.page_name(0), Some("1.jpg"));
     assert_eq!(entry.read_page(1).unwrap(), b"two");

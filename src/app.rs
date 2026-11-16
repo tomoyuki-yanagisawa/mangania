@@ -137,12 +137,10 @@ impl App {
                 let Entry {
                     path: resolved_path,
                     mut archive,
-                    ..
                 } = entry;
                 debug_log::log(format_args!(
-                    "archive ready: {} page(s), {} entry(s)",
-                    archive.pages.len(),
-                    archive.names.len()
+                    "archive ready: {} page(s)",
+                    archive.pages.len()
                 ));
                 if archive.pages.is_empty() {
                     debug_log::log(format_args!("archive has no supported images"));

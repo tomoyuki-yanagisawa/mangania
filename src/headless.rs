@@ -7,8 +7,8 @@ use crate::open::Entry;
 
 pub fn list(path: &Path) -> Result<(), Box<dyn Error>> {
     let entry = Entry::open(path).map_err(io::Error::other)?;
-    for (index, name) in entry.archive.names.iter().enumerate() {
-        println!("{}\t{name}", index + 1);
+    for (index, page) in entry.archive.pages.iter().enumerate() {
+        println!("{}\t{}", index + 1, page.name);
     }
     println!("{} page(s)", entry.page_count());
     Ok(())
@@ -20,7 +20,7 @@ pub fn check(path: &Path) -> Result<(), Box<dyn Error>> {
     let mut failed = 0;
 
     for page in 0..total {
-        let name = entry.archive.names[page].clone();
+        let name = entry.archive.pages[page].name.clone();
         if let Err(error) = entry
             .read_page(page)
             .and_then(|bytes| decoder::decode(&bytes).map(|_| ()))

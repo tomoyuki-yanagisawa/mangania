@@ -8,9 +8,14 @@ use mangania::prefetch::Prefetch;
 #[test]
 fn prefetches_without_a_winit_event_loop() {
     let image = common::png();
-    let path = common::temp_zip(&[("1.png", image.as_slice())]);
+    let path = common::temp_zip(&[
+        ("10.png", b"not an image"),
+        ("notes.txt", b"ignored"),
+        ("2.png", image.as_slice()),
+    ]);
     let archive = Archive::open(&path).unwrap();
-    let entry = archive.pages[0];
+    assert_eq!(archive.pages[0].name, "2.png");
+    let entry = archive.pages[0].entry;
     let mut prefetch = Prefetch::start(archive, || true);
 
     prefetch.request(0, entry, true);
