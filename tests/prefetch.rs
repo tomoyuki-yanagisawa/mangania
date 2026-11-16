@@ -15,12 +15,15 @@ fn prefetches_without_a_winit_event_loop() {
         ("2.png", image.as_slice()),
     ]);
     let cache_dir = path.parent().unwrap().join("cache");
-    let archive = Archive::open(&path).unwrap();
+    let mut archive = Archive::open(&path).unwrap();
     assert_eq!(archive.pages[0].name, "2.png");
-    let entry = archive.pages[0].entry;
+    let page = archive.pages[0].clone();
+    archive.pages.clear();
     let mut prefetch = Prefetch::start(archive, DiskCache::new(cache_dir.clone()), || true);
 
-    prefetch.request(0, entry, true);
+    // The GUI moves the page list into the viewer; prefetching must not depend
+    // on the archive retaining it.
+    prefetch.request(0, page.entry, page.name, true);
 
     let deadline = Instant::now() + Duration::from_secs(5);
     let (page, result) = loop {

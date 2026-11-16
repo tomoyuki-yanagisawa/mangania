@@ -41,6 +41,18 @@ impl DiskCache {
     /// Returns the cached file for a page, extracting it from the ZIP on a miss.
     pub fn source(&self, archive: &mut Archive, page: usize) -> Result<PathBuf, String> {
         let (entry, name) = page_entry(archive, page)?;
+        self.source_entry(archive, entry, &name)
+    }
+
+    /// Returns the cached file for an archive entry. This does not depend on
+    /// `Archive::pages`, so prefetching still works after the UI takes the
+    /// page list.
+    pub fn source_entry(
+        &self,
+        archive: &mut Archive,
+        entry: usize,
+        name: &str,
+    ) -> Result<PathBuf, String> {
         let info = archive.entry_info(entry)?;
         self.ensure_directory()?;
 
@@ -49,46 +61,54 @@ impl DiskCache {
             archive_size: archive.size,
             archive_modified: archive.modified,
             entry,
-            entry_name: &name,
+            entry_name: name,
             info,
         };
         let path = self.directory.join(key.filename());
 
         if self.is_valid(&path, info.size)? {
             debug_log::log(format_args!(
-                "disk cache: hit page={} bytes={} path={}",
-                page + 1,
+                "disk cache: hit entry={entry} bytes={} path={}",
                 info.size,
                 path.display()
             ));
             return Ok(path);
         }
 
-        self.store(archive, page, entry, &path, info.size)?;
+        self.store(archive, entry, &path, info.size)?;
         Ok(path)
     }
 
     /// Decodes a page from the cached file. A decode failure is retried once
     /// after deleting the file and extracting it again.
     pub fn decode_page(&self, archive: &mut Archive, page: usize) -> Result<RgbaImage, String> {
-        let path = self.source(archive, page)?;
+        let (entry, name) = page_entry(archive, page)?;
+        self.decode_entry(archive, entry, &name)
+    }
+
+    /// Decodes an archive entry independently of `Archive::pages`.
+    pub fn decode_entry(
+        &self,
+        archive: &mut Archive,
+        entry: usize,
+        name: &str,
+    ) -> Result<RgbaImage, String> {
+        let path = self.source_entry(archive, entry, name)?;
         match decoder::decode_file(&path) {
             Ok(image) => Ok(image),
             Err(first) => {
                 debug_log::log(format_args!(
-                    "disk cache: decode failed page={} path={} error={first}; re-extracting",
-                    page + 1,
+                    "disk cache: decode failed entry={entry} path={} error={first}; re-extracting",
                     path.display()
                 ));
                 let _ = fs::remove_file(&path);
-                let path = self.source(archive, page)?;
+                let path = self.source_entry(archive, entry, name)?;
                 match decoder::decode_file(&path) {
                     Ok(image) => Ok(image),
                     Err(second) => {
                         let _ = fs::remove_file(&path);
                         let message = format!(
-                            "page {}: cached image is unreadable after re-extracting ({}): {second}",
-                            page + 1,
+                            "entry {entry}: cached image is unreadable after re-extracting ({}): {second}",
                             path.display()
                         );
                         debug_log::log(format_args!("disk cache: {message}"));
@@ -155,7 +175,6 @@ impl DiskCache {
     fn store(
         &self,
         archive: &mut Archive,
-        page: usize,
         entry: usize,
         path: &Path,
         size: u64,
@@ -164,11 +183,10 @@ impl DiskCache {
         let result = (|| -> Result<(), String> {
             let copied = archive
                 .write_index(entry, &mut file)
-                .map_err(|error| format!("extract page {}: {error}", page + 1))?;
+                .map_err(|error| format!("extract entry {entry}: {error}"))?;
             if copied != size {
                 return Err(format!(
-                    "page {} extracted {copied} bytes, expected {size}",
-                    page + 1
+                    "entry {entry} extracted {copied} bytes, expected {size}"
                 ));
             }
             file.flush()
@@ -202,8 +220,7 @@ impl DiskCache {
         result?;
 
         debug_log::log(format_args!(
-            "disk cache: stored page={} bytes={} path={}",
-            page + 1,
+            "disk cache: stored entry={entry} bytes={} path={}",
             size,
             path.display()
         ));

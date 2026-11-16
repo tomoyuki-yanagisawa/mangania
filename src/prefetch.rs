@@ -13,6 +13,7 @@ use crate::disk_cache::DiskCache;
 struct Job {
     page: usize,
     entry: usize,
+    name: String,
 }
 
 struct Queue {
@@ -73,7 +74,7 @@ impl Prefetch {
                     job.entry
                 ));
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let image = cache.decode_page(&mut archive, job.page)?;
+                    let image = cache.decode_entry(&mut archive, job.entry, &job.name)?;
                     debug_log::log(format_args!(
                         "job decode: page={} {}x{} in {:.1}ms",
                         job.page + 1,
@@ -120,7 +121,7 @@ impl Prefetch {
     }
 
     /// `urgent` jobs jump ahead of queued prefetches and discard obsolete ones.
-    pub fn request(&mut self, page: usize, entry: usize, urgent: bool) {
+    pub fn request(&mut self, page: usize, entry: usize, name: String, urgent: bool) {
         debug_log::log(format_args!(
             "request: page={} entry={} urgent={urgent}",
             page + 1,
@@ -135,7 +136,7 @@ impl Prefetch {
             if !self.in_flight.insert(page) {
                 return;
             }
-            queue.jobs.push_back(Job { page, entry });
+            queue.jobs.push_back(Job { page, entry, name });
         } else {
             // Drop queued (not yet running) jobs so the current page starts next.
             while let Some(job) = queue.jobs.pop_front() {
@@ -145,7 +146,7 @@ impl Prefetch {
                 return;
             }
             self.in_flight.insert(page);
-            queue.jobs.push_front(Job { page, entry });
+            queue.jobs.push_front(Job { page, entry, name });
         }
         drop(queue);
         self.shared.ready.notify_one();
