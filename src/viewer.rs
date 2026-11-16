@@ -187,7 +187,8 @@ impl Viewer {
             return;
         }
         let entry = self.pages[page].entry;
-        self.prefetch.request(page, entry, urgent);
+        let name = self.pages[page].name.clone();
+        self.prefetch.request(page, entry, name, urgent);
     }
 
     /// Resizes an arrived decoded page to the current window preview, caches
