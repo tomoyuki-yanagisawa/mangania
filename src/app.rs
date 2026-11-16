@@ -754,6 +754,9 @@ impl ApplicationHandler<UserEvent> for App {
                 self.refresh();
             }
             WindowEvent::DroppedFile(path) => {
+                if let Some(window) = &self.window {
+                    window.focus_window();
+                }
                 self.open(&path);
                 self.request_redraw();
             }
