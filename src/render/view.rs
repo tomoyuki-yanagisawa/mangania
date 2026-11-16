@@ -25,22 +25,6 @@ pub fn blank(buffer: &mut [u32]) {
     buffer.fill(BACKGROUND);
 }
 
-/// Fits one page into the window.
-pub fn render(buffer: &mut [u32], width: usize, height: usize, image: &RgbaImage) {
-    render_pages(buffer, width, height, &[Some(image)]);
-}
-
-/// Fits two pages side by side. `left` is drawn first, then `right`.
-pub fn render_spread(
-    buffer: &mut [u32],
-    width: usize,
-    height: usize,
-    left: Option<&RgbaImage>,
-    right: Option<&RgbaImage>,
-) {
-    render_pages(buffer, width, height, &[left, right]);
-}
-
 /// Fits the given pages side by side, preserving their relative sizes.
 ///
 /// Uses a temporary cache and the default filter. The GUI retains its cache

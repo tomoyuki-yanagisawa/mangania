@@ -9,6 +9,24 @@ fn cache_for(archive_path: &Path) -> DiskCache {
     DiskCache::new(archive_path.parent().unwrap().join("cache"))
 }
 
+fn source(
+    cache: &DiskCache,
+    archive: &mut Archive,
+    page: usize,
+) -> Result<std::path::PathBuf, String> {
+    let page = archive.pages[page].clone();
+    cache.source(archive, page.entry, &page.name)
+}
+
+fn decode(
+    cache: &DiskCache,
+    archive: &mut Archive,
+    page: usize,
+) -> Result<image::RgbaImage, String> {
+    let page = archive.pages[page].clone();
+    cache.decode(archive, page.entry, &page.name)
+}
+
 fn cache_files(directory: &Path) -> Vec<std::path::PathBuf> {
     let mut files: Vec<_> = std::fs::read_dir(directory)
         .unwrap()
@@ -26,15 +44,15 @@ fn extracts_on_miss_and_reuses_on_hit() {
     let cache = cache_for(&path);
     let mut archive = Archive::open(&path).unwrap();
 
-    let first = cache.source(&mut archive, 0).unwrap();
+    let first = source(&cache, &mut archive, 0).unwrap();
     assert!(first.starts_with(cache.directory()));
     assert_eq!(std::fs::read(&first).unwrap(), image);
     assert_eq!(
-        cache.decode_page(&mut archive, 0).unwrap().dimensions(),
+        decode(&cache, &mut archive, 0).unwrap().dimensions(),
         (4, 3)
     );
 
-    let second = cache.source(&mut archive, 0).unwrap();
+    let second = source(&cache, &mut archive, 0).unwrap();
     assert_eq!(first, second);
     let files = cache_files(cache.directory());
     assert_eq!(files.len(), 1);
@@ -48,7 +66,7 @@ fn archive_change_selects_a_different_cache_file() {
     let path = common::temp_zip(&[("1.png", common::png().as_slice())]);
     let cache = cache_for(&path);
     let mut archive = Archive::open(&path).unwrap();
-    let first = cache.source(&mut archive, 0).unwrap();
+    let first = source(&cache, &mut archive, 0).unwrap();
     drop(archive);
 
     let replacement = common::temp_zip(&[("1.png", b"different image bytes".as_slice())]);
@@ -56,7 +74,7 @@ fn archive_change_selects_a_different_cache_file() {
     common::cleanup(&replacement);
 
     let mut archive = Archive::open(&path).unwrap();
-    let second = cache.source(&mut archive, 0).unwrap();
+    let second = source(&cache, &mut archive, 0).unwrap();
     assert_ne!(first, second);
     assert_eq!(std::fs::read(second).unwrap(), b"different image bytes");
 
@@ -70,12 +88,12 @@ fn clear_removes_all_cached_files() {
     let cache = cache_for(&path);
     let mut archive = Archive::open(&path).unwrap();
 
-    let cached = cache.source(&mut archive, 0).unwrap();
+    let cached = source(&cache, &mut archive, 0).unwrap();
     assert!(cached.exists());
     cache.clear().unwrap();
     assert!(!cache.directory().exists());
 
-    let cached = cache.source(&mut archive, 0).unwrap();
+    let cached = source(&cache, &mut archive, 0).unwrap();
     assert_eq!(std::fs::read(cached).unwrap(), image);
 
     common::cleanup(&path);
@@ -89,25 +107,29 @@ fn cache_directory_failure_is_an_error() {
     let cache = DiskCache::new(blocker.join("cache"));
     let mut archive = Archive::open(&path).unwrap();
 
-    let error = cache.source(&mut archive, 0).unwrap_err();
+    let error = source(&cache, &mut archive, 0).unwrap_err();
     assert!(error.contains("disk cache"), "unexpected error: {error}");
 
     common::cleanup(&path);
 }
 
 #[test]
-fn corrupt_cached_file_is_retried_once() {
+fn corrupt_cached_file_is_removed_and_rebuilt_on_next_read() {
     let image = common::png();
     let path = common::temp_zip(&[("1.png", image.as_slice())]);
     let cache = cache_for(&path);
     let mut archive = Archive::open(&path).unwrap();
 
-    let cached = cache.source(&mut archive, 0).unwrap();
+    let cached = source(&cache, &mut archive, 0).unwrap();
     let mut bytes = std::fs::read(&cached).unwrap();
     bytes[0] ^= 0xff;
     std::fs::write(&cached, bytes).unwrap();
 
-    let decoded = cache.decode_page(&mut archive, 0).unwrap();
+    let error = decode(&cache, &mut archive, 0).unwrap_err();
+    assert!(error.contains("unreadable"), "unexpected error: {error}");
+    assert!(!cached.exists());
+
+    let decoded = decode(&cache, &mut archive, 0).unwrap();
     assert_eq!(decoded.dimensions(), (4, 3));
     assert_eq!(std::fs::read(&cached).unwrap(), image);
 
@@ -121,10 +143,10 @@ fn truncated_cached_file_is_replaced() {
     let cache = cache_for(&path);
     let mut archive = Archive::open(&path).unwrap();
 
-    let cached = cache.source(&mut archive, 0).unwrap();
+    let cached = source(&cache, &mut archive, 0).unwrap();
     std::fs::write(&cached, b"x").unwrap();
 
-    let source = cache.source(&mut archive, 0).unwrap();
+    let source = source(&cache, &mut archive, 0).unwrap();
     assert_eq!(source, cached);
     assert_eq!(std::fs::read(&source).unwrap(), image);
 
@@ -132,16 +154,13 @@ fn truncated_cached_file_is_replaced() {
 }
 
 #[test]
-fn undecodable_entry_reports_an_error_after_retry() {
+fn undecodable_entry_reports_an_error() {
     let path = common::temp_zip(&[("1.png", b"not an image".as_slice())]);
     let cache = cache_for(&path);
     let mut archive = Archive::open(&path).unwrap();
 
-    let error = cache.decode_page(&mut archive, 0).unwrap_err();
-    assert!(
-        error.contains("after re-extracting"),
-        "unexpected error: {error}"
-    );
+    let error = decode(&cache, &mut archive, 0).unwrap_err();
+    assert!(error.contains("unreadable"), "unexpected error: {error}");
 
     common::cleanup(&path);
 }

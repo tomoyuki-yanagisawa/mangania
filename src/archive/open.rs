@@ -8,7 +8,6 @@ use crate::platform::resolve_shortcut;
 
 /// Enough bytes to recognize every supported container signature.
 const PROBE_BYTES: usize = 1024;
-/// An empty ZIP (End of Central Directory only) is 22 bytes.
 const MIN_ZIP_BYTES: u64 = 22;
 const MAX_SHORTCUT_DEPTH: usize = 8;
 
@@ -26,26 +25,18 @@ const SHELL_LINK_HEADER: &[u8] = &[
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
     Zip,
-    Rar,
-    SevenZip,
+    Unsupported,
+    Broken,
     ShellLink,
-    Html,
-    Empty,
-    Truncated,
-    Unknown,
 }
 
 impl Format {
     pub fn label(self) -> &'static str {
         match self {
             Self::Zip => "ZIP",
-            Self::Rar => "RAR/CBR",
-            Self::SevenZip => "7z",
+            Self::Unsupported => "unsupported format",
+            Self::Broken => "broken or unreadable file",
             Self::ShellLink => "Windows shortcut",
-            Self::Html => "HTML",
-            Self::Empty => "empty",
-            Self::Truncated => "truncated ZIP",
-            Self::Unknown => "unknown",
         }
     }
 }
@@ -89,9 +80,6 @@ impl Entry {
 
     fn from_probe(path: PathBuf, probe: Probe) -> Result<Self, String> {
         let Probe { file, len, format } = probe;
-        if format == Format::Empty {
-            return Err(format!("{}: file is empty", path.display()));
-        }
         debug_log::log(format_args!(
             "open: {} ({} bytes, detected {format})",
             path.display(),
@@ -148,10 +136,10 @@ pub fn detect(path: &Path) -> Format {
         return Format::ShellLink;
     }
     let Ok(metadata) = std::fs::metadata(path) else {
-        return Format::Unknown;
+        return Format::Broken;
     };
     let Ok(mut file) = File::open(path) else {
-        return Format::Unknown;
+        return Format::Broken;
     };
     let mut prefix = Vec::with_capacity(PROBE_BYTES);
     if file
@@ -160,7 +148,7 @@ pub fn detect(path: &Path) -> Format {
         .read_to_end(&mut prefix)
         .is_err()
     {
-        return Format::Unknown;
+        return Format::Broken;
     }
     detect_prefix(path, &prefix, metadata.len())
 }
@@ -170,28 +158,25 @@ fn detect_prefix(path: &Path, prefix: &[u8], len: u64) -> Format {
         return Format::ShellLink;
     }
     if len == 0 {
-        return Format::Empty;
+        return Format::Broken;
     }
-    if prefix.starts_with(RAR_MAGIC) {
-        return Format::Rar;
-    }
-    if prefix.starts_with(SEVEN_ZIP_MAGIC) {
-        return Format::SevenZip;
-    }
-    if looks_like_html(prefix) {
-        return Format::Html;
+    if prefix.starts_with(RAR_MAGIC)
+        || prefix.starts_with(SEVEN_ZIP_MAGIC)
+        || looks_like_html(prefix)
+    {
+        return Format::Unsupported;
     }
     if starts_with_zip_signature(prefix) {
         return if len < MIN_ZIP_BYTES {
-            Format::Truncated
+            Format::Broken
         } else {
             Format::Zip
         };
     }
     if prefix.starts_with(b"PK") {
-        return Format::Truncated;
+        return Format::Broken;
     }
-    Format::Unknown
+    Format::Broken
 }
 
 fn starts_with_zip_signature(prefix: &[u8]) -> bool {
@@ -237,19 +222,14 @@ fn is_shortcut(path: &Path) -> bool {
 fn open_error(path: &Path, format: Format, len: u64, error: &str) -> String {
     let path = path.display();
     match format {
-        Format::Rar => {
-            format!("{path}: RAR/CBR archives are not supported; convert to ZIP/CBZ")
+        Format::Unsupported => {
+            format!("{path}: unsupported file format; MangaNia reads ZIP/CBZ archives")
         }
-        Format::SevenZip => format!("{path}: 7z archives are not supported; convert to ZIP/CBZ"),
-        Format::Html => format!("{path}: looks like an HTML file, not a ZIP archive"),
-        Format::Empty => format!("{path}: file is empty"),
-        Format::Truncated => format!("{path}: truncated ZIP archive ({len} bytes): {error}"),
-        Format::Zip => format!("{path}: invalid or truncated ZIP archive ({len} bytes): {error}"),
+        Format::Broken | Format::Zip => {
+            format!("{path}: broken or unreadable archive ({len} bytes): {error}")
+        }
         Format::ShellLink => {
             format!("{path}: Windows shortcut does not point to a readable archive: {error}")
         }
-        Format::Unknown => format!(
-            "{path}: unsupported or unrecognized file format ({len} bytes); MangaNia reads ZIP/CBZ archives"
-        ),
     }
 }

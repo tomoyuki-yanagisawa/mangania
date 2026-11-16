@@ -1,5 +1,7 @@
+use std::collections::hash_map::DefaultHasher;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, BufReader, BufWriter, Write};
+use std::hash::{Hash, Hasher};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -38,16 +40,8 @@ impl DiskCache {
         &self.directory
     }
 
-    /// Returns the cached file for a page, extracting it from the ZIP on a miss.
-    pub fn source(&self, archive: &mut Archive, page: usize) -> Result<PathBuf, String> {
-        let (entry, name) = page_entry(archive, page)?;
-        self.source_entry(archive, entry, &name)
-    }
-
-    /// Returns the cached file for an archive entry. This does not depend on
-    /// `Archive::pages`, so prefetching still works after the UI takes the
-    /// page list.
-    pub fn source_entry(
+    /// Returns the cached file for an archive entry, extracting it on a miss.
+    pub fn source(
         &self,
         archive: &mut Archive,
         entry: usize,
@@ -79,73 +73,27 @@ impl DiskCache {
         Ok(path)
     }
 
-    /// Decodes a page from the cached file. A decode failure is retried once
-    /// after deleting the file and extracting it again.
-    pub fn decode_page(&self, archive: &mut Archive, page: usize) -> Result<RgbaImage, String> {
-        let (entry, name) = page_entry(archive, page)?;
-        self.decode_entry(archive, entry, &name)
-    }
-
-    /// Decodes an archive entry independently of `Archive::pages`.
-    pub fn decode_entry(
+    /// Decodes an archive entry from the cached file. A broken cache file is
+    /// removed and reported; the next read re-extracts it.
+    pub fn decode(
         &self,
         archive: &mut Archive,
         entry: usize,
         name: &str,
     ) -> Result<RgbaImage, String> {
-        let path = self.source_entry(archive, entry, name)?;
+        let path = self.source(archive, entry, name)?;
         match decoder::decode_file(&path) {
             Ok(image) => Ok(image),
-            Err(first) => {
-                debug_log::log(format_args!(
-                    "disk cache: decode failed entry={entry} path={} error={first}; re-extracting",
-                    path.display()
-                ));
+            Err(error) => {
                 let _ = fs::remove_file(&path);
-                let path = self.source_entry(archive, entry, name)?;
-                match decoder::decode_file(&path) {
-                    Ok(image) => Ok(image),
-                    Err(second) => {
-                        let _ = fs::remove_file(&path);
-                        let message = format!(
-                            "entry {entry}: cached image is unreadable after re-extracting ({}): {second}",
-                            path.display()
-                        );
-                        debug_log::log(format_args!("disk cache: {message}"));
-                        Err(message)
-                    }
-                }
+                let message = format!(
+                    "entry {entry}: cached image is unreadable ({}): {error}",
+                    path.display()
+                );
+                debug_log::log(format_args!("disk cache: {message}"));
+                Err(message)
             }
         }
-    }
-
-    /// Writes the original decompressed entry bytes to `output` by copying the
-    /// cached file.
-    pub fn write_entry_to(
-        &self,
-        archive: &mut Archive,
-        page: usize,
-        output: &Path,
-    ) -> Result<(), String> {
-        let source = self.source(archive, page)?;
-        let result = (|| -> Result<(), String> {
-            let input = File::open(&source)
-                .map_err(|error| format!("open disk cache {}: {error}", source.display()))?;
-            let mut reader = BufReader::new(input);
-            let file = File::create(output)
-                .map_err(|error| format!("create {}: {error}", output.display()))?;
-            let mut writer = BufWriter::new(file);
-            io::copy(&mut reader, &mut writer)
-                .map_err(|error| format!("copy {}: {error}", source.display()))?;
-            writer
-                .flush()
-                .map_err(|error| format!("write {}: {error}", output.display()))?;
-            Ok(())
-        })();
-        if result.is_err() {
-            let _ = fs::remove_file(output);
-        }
-        result
     }
 
     fn ensure_directory(&self) -> Result<(), String> {
@@ -272,61 +220,18 @@ struct CacheKey<'a> {
 
 impl CacheKey<'_> {
     fn filename(&self) -> String {
-        let mut hash = StableHash::new();
-        hash.write(self.archive_path.as_os_str().as_encoded_bytes());
-        hash.u64(self.archive_size);
-        match self.archive_modified {
-            Some(modified) => {
-                hash.u8(1);
-                match modified.duration_since(UNIX_EPOCH) {
-                    Ok(duration) => {
-                        hash.u64(duration.as_secs());
-                        hash.u32(duration.subsec_nanos());
-                    }
-                    Err(_) => {
-                        hash.u64(0);
-                        hash.u32(0);
-                    }
-                }
-            }
-            None => hash.u8(0),
-        }
-        hash.u64(self.entry as u64);
-        hash.write(self.entry_name.as_bytes());
-        hash.u64(self.info.size);
-        hash.u32(self.info.crc32);
+        let mut hash = DefaultHasher::new();
+        self.archive_path.hash(&mut hash);
+        self.archive_size.hash(&mut hash);
+        self.archive_modified
+            .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+            .map(|duration| (duration.as_secs(), duration.subsec_nanos()))
+            .hash(&mut hash);
+        self.entry.hash(&mut hash);
+        self.entry_name.hash(&mut hash);
+        self.info.size.hash(&mut hash);
+        self.info.crc32.hash(&mut hash);
         format!("{:016x}.{}", hash.finish(), extension(self.entry_name))
-    }
-}
-
-struct StableHash(u64);
-
-impl StableHash {
-    fn new() -> Self {
-        Self(0xcbf2_9ce4_8422_2325)
-    }
-
-    fn write(&mut self, bytes: &[u8]) {
-        for &byte in bytes {
-            self.0 ^= u64::from(byte);
-            self.0 = self.0.wrapping_mul(0x0000_0100_0000_01b3);
-        }
-    }
-
-    fn u8(&mut self, value: u8) {
-        self.write(&[value]);
-    }
-
-    fn u32(&mut self, value: u32) {
-        self.write(&value.to_le_bytes());
-    }
-
-    fn u64(&mut self, value: u64) {
-        self.write(&value.to_le_bytes());
-    }
-
-    fn finish(self) -> u64 {
-        self.0
     }
 }
 
@@ -341,14 +246,6 @@ fn extension(name: &str) -> String {
                 && extension.bytes().all(|byte| byte.is_ascii_alphanumeric())
         })
         .unwrap_or_else(|| "img".to_string())
-}
-
-fn page_entry(archive: &Archive, page: usize) -> Result<(usize, String), String> {
-    let page = archive
-        .pages
-        .get(page)
-        .ok_or_else(|| format!("page {} is out of range", page + 1))?;
-    Ok((page.entry, page.name.clone()))
 }
 
 pub fn default_directory() -> PathBuf {
@@ -389,23 +286,12 @@ fn platform_directory() -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{StableHash, extension};
+    use super::extension;
 
     #[test]
     fn keeps_supported_extensions_for_image_detection() {
         assert_eq!(extension("001.JPG"), "jpg");
         assert_eq!(extension("dir/page.png"), "png");
         assert_eq!(extension("no-extension"), "img");
-    }
-
-    #[test]
-    fn stable_hash_changes_with_input() {
-        let mut a = StableHash::new();
-        a.write(b"archive");
-        a.u64(7);
-        let mut b = StableHash::new();
-        b.write(b"archive");
-        b.u64(8);
-        assert_ne!(a.finish(), b.finish());
     }
 }

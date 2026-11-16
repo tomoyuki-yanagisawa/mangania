@@ -41,7 +41,7 @@ fn opens_a_zip_with_leading_data() {
     let path = zip.parent().unwrap().join("book.cbz");
     std::fs::write(&path, &bytes).unwrap();
 
-    assert_eq!(open::detect(&path), Format::Unknown);
+    assert_eq!(open::detect(&path), Format::Broken);
 
     let mut entry = Entry::open(&path).unwrap();
     assert_eq!(entry.page_name(0), Some("1.jpg"));
@@ -97,12 +97,11 @@ fn resolves_windows_shortcut_to_zip() {
 fn reports_rar_as_unsupported() {
     let path = common::temp_file("book.cbr", b"Rar!\x1A\x07\x00rest of the archive");
 
-    assert_eq!(open::detect(&path), Format::Rar);
+    assert_eq!(open::detect(&path), Format::Unsupported);
 
     let error = open_error(&path);
-    assert!(error.contains("RAR/CBR"), "unexpected error: {error}");
     assert!(
-        error.to_ascii_lowercase().contains("not supported"),
+        error.to_ascii_lowercase().contains("unsupported"),
         "unexpected error: {error}"
     );
 
@@ -113,12 +112,11 @@ fn reports_rar_as_unsupported() {
 fn reports_7z_as_unsupported() {
     let path = common::temp_file("book.7z", b"7z\xBC\xAF\x27\x1Crest of the archive");
 
-    assert_eq!(open::detect(&path), Format::SevenZip);
+    assert_eq!(open::detect(&path), Format::Unsupported);
 
     let error = open_error(&path);
-    assert!(error.contains("7z"), "unexpected error: {error}");
     assert!(
-        error.to_ascii_lowercase().contains("not supported"),
+        error.to_ascii_lowercase().contains("unsupported"),
         "unexpected error: {error}"
     );
 
@@ -132,10 +130,13 @@ fn reports_html_instead_of_eocd_errors() {
         b"<!DOCTYPE html>\n<html><body>not found</body></html>",
     );
 
-    assert_eq!(open::detect(&path), Format::Html);
+    assert_eq!(open::detect(&path), Format::Unsupported);
 
     let error = open_error(&path);
-    assert!(error.contains("HTML"), "unexpected error: {error}");
+    assert!(
+        error.to_ascii_lowercase().contains("unsupported"),
+        "unexpected error: {error}"
+    );
     assert!(!error.contains("EOCD"), "unexpected error: {error}");
 
     common::cleanup(&path);
@@ -145,11 +146,11 @@ fn reports_html_instead_of_eocd_errors() {
 fn reports_empty_files() {
     let path = common::temp_file("empty.cbz", b"");
 
-    assert_eq!(open::detect(&path), Format::Empty);
+    assert_eq!(open::detect(&path), Format::Broken);
 
     let error = open_error(&path);
     assert!(
-        error.to_ascii_lowercase().contains("empty"),
+        error.to_ascii_lowercase().contains("broken"),
         "unexpected error: {error}"
     );
 
@@ -160,11 +161,11 @@ fn reports_empty_files() {
 fn reports_truncated_zip_files() {
     let path = common::temp_file("cut.cbz", b"PK\x03\x04");
 
-    assert_eq!(open::detect(&path), Format::Truncated);
+    assert_eq!(open::detect(&path), Format::Broken);
 
     let error = open_error(&path);
     assert!(
-        error.to_ascii_lowercase().contains("truncated"),
+        error.to_ascii_lowercase().contains("broken"),
         "unexpected error: {error}"
     );
 
@@ -175,12 +176,11 @@ fn reports_truncated_zip_files() {
 fn reports_unknown_files() {
     let path = common::temp_file("book.cbz", b"this is not an archive");
 
-    assert_eq!(open::detect(&path), Format::Unknown);
+    assert_eq!(open::detect(&path), Format::Broken);
 
     let error = open_error(&path);
     assert!(
-        error.to_ascii_lowercase().contains("unsupported")
-            || error.to_ascii_lowercase().contains("unrecognized"),
+        error.to_ascii_lowercase().contains("broken"),
         "unexpected error: {error}"
     );
 
