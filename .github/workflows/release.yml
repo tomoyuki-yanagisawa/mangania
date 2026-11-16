@@ -18,7 +18,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       should_release: ${{ steps.version.outputs.should_release }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -55,7 +55,7 @@ jobs:
           - os: ubuntu-latest
             platform: linux-x86_64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -95,7 +95,7 @@ jobs:
           fi
           tar -czf "mangania-v${{ needs.version.outputs.version }}-${platform}.tar.gz" -C dist .
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mangania-${{ matrix.platform }}
           path: |
@@ -112,7 +112,7 @@ jobs:
       RUSTUP_TOOLCHAIN: nightly
       RUSTFLAGS: -C target-feature=+crt-static
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@nightly
         with:
@@ -134,7 +134,7 @@ jobs:
           $archive = "mangania-v${{ needs.version.outputs.version }}-windows7-x86_64.zip"
           Compress-Archive -Path "dist/*" -DestinationPath $archive
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mangania-windows7-x86_64
           path: mangania-v${{ needs.version.outputs.version }}-windows7-x86_64.zip
@@ -149,11 +149,11 @@ jobs:
     if: needs.version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
