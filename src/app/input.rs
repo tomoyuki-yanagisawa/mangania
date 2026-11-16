@@ -44,13 +44,12 @@ impl App {
     }
 
     fn go_to_inner(&mut self, page: usize, align: bool) {
-        let spread = self.config.spread;
         self.scroll = 0.0;
         let Some(viewer) = self.viewer.as_mut() else {
             return;
         };
         let moved = if align {
-            viewer.go_to(page, spread)
+            viewer.go_to(page)
         } else {
             viewer.go_to_unaligned(page)
         };

@@ -171,15 +171,13 @@ impl Config {
             })
     }
 
-    /// Cache capacity in images. One page can occupy two images: its window
-    /// preview and the exact size used for spread layout.
+    /// Number of display images the cache can hold. Each page has one.
     pub fn cache_entries(&self) -> usize {
-        let pages = if self.cache_pages == 0 {
+        if self.cache_pages == 0 {
             DEFAULT_CACHE_PAGES
         } else {
             self.cache_pages
-        };
-        pages.saturating_mul(2)
+        }
     }
 
     pub fn cache_bytes(&self) -> usize {

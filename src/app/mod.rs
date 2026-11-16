@@ -165,8 +165,8 @@ impl App {
 
     fn refresh(&mut self) {
         if let Some(viewer) = self.viewer.as_mut() {
-            viewer.request_current(self.config.spread);
-            viewer.prefetch_around(self.config.spread);
+            viewer.request_current();
+            viewer.prefetch_around();
         }
         self.update_title();
         self.request_redraw();

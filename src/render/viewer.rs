@@ -8,7 +8,7 @@ use crate::archive::Page;
 use crate::config::ScaleFilter;
 use crate::debug_log;
 use crate::input::navigation;
-use crate::render::cache::{ScaledCache, ScaledKey};
+use crate::render::cache::PageCache;
 use crate::render::prefetch::Prefetch;
 use crate::render::resize::resized;
 use crate::render::view;
@@ -18,34 +18,21 @@ pub(crate) struct Viewport {
     width: u32,
     height: u32,
     filter: ScaleFilter,
+    spread: bool,
 }
 
 impl Viewport {
-    pub(crate) fn new(width: u32, height: u32, filter: ScaleFilter) -> Self {
+    pub(crate) fn new(width: u32, height: u32, filter: ScaleFilter, spread: bool) -> Self {
         Self {
             width,
             height,
             filter,
+            spread,
         }
     }
-}
 
-/// A page that is currently visible on screen.
-pub(crate) struct VisiblePage {
-    pub(crate) index: usize,
-    /// Display-sized image.
-    pub(crate) image: Arc<RgbaImage>,
-    /// Original page dimensions, used to lay out spreads.
-    pub(crate) original_size: (u32, u32),
-}
-
-impl VisiblePage {
-    pub(crate) fn render_page(&self) -> view::RenderPage<'_> {
-        view::RenderPage {
-            index: self.index,
-            image: self.image.as_ref(),
-            original_size: self.original_size,
-        }
+    pub(crate) fn is_empty(self) -> bool {
+        self.width == 0 || self.height == 0
     }
 }
 
@@ -83,9 +70,8 @@ pub(crate) struct Viewer {
     pub(crate) pages: Vec<Page>,
     pub(crate) current: usize,
     pub(crate) prefetch: Prefetch,
-    pub(crate) cache: ScaledCache,
+    pub(crate) cache: PageCache,
     pub(crate) errors: HashMap<usize, String>,
-    sizes: HashMap<usize, (u32, u32)>,
     /// Pages whose decoded image could not be kept in the cache. Prefetch
     /// skips them so it does not decode the same page in a loop. Pages that
     /// were cached and later evicted are not listed, so a later prefetch can
@@ -111,17 +97,16 @@ impl Viewer {
             pages,
             current: 0,
             prefetch,
-            cache: ScaledCache::new(cache_limits.entries, cache_limits.bytes),
+            cache: PageCache::new(cache_limits.entries, cache_limits.bytes),
             errors: HashMap::new(),
-            sizes: HashMap::new(),
             rejected: HashSet::new(),
             depth,
             viewport,
         }
     }
 
-    pub(crate) fn go_to(&mut self, page: usize, spread: bool) -> bool {
-        let Some(page) = navigation::clamp(page, self.pages.len(), spread) else {
+    pub(crate) fn go_to(&mut self, page: usize) -> bool {
+        let Some(page) = navigation::clamp(page, self.pages.len(), self.viewport.spread) else {
             return false;
         };
         self.apply_page(page)
@@ -147,10 +132,9 @@ impl Viewer {
         self.current -= self.current % 2;
     }
 
-    /// Changes the display target. The resized cache is cleared so pages are
-    /// decoded again at the new window size or filter.
-    pub(crate) fn set_viewport(&mut self, width: u32, height: u32, filter: ScaleFilter) -> bool {
-        let viewport = Viewport::new(width, height, filter);
+    /// Changes the display target. The page cache is cleared so images are
+    /// decoded again at the new window size, filter, or display mode.
+    pub(crate) fn set_viewport(&mut self, viewport: Viewport) -> bool {
         if self.viewport == viewport {
             return false;
         }
@@ -158,18 +142,19 @@ impl Viewer {
         self.cache.clear();
         self.rejected.clear();
         debug_log::log(format_args!(
-            "viewer: viewport {}x{} filter={} cache cleared",
-            width,
-            height,
-            filter.as_str()
+            "viewer: viewport {}x{} filter={} spread={} cache cleared",
+            viewport.width,
+            viewport.height,
+            viewport.filter.as_str(),
+            viewport.spread
         ));
         true
     }
 
-    pub(crate) fn request_current(&mut self, spread: bool) {
+    pub(crate) fn request_current(&mut self) {
         let current = self.current;
         let mut pages = vec![current];
-        if spread && current + 1 < self.pages.len() {
+        if self.viewport.spread && current + 1 < self.pages.len() {
             pages.push(current + 1);
         }
         // Ask for the whole spread at once. Requesting the pages separately
@@ -185,14 +170,20 @@ impl Viewer {
         self.prefetch.request_batch(jobs);
     }
 
-    pub(crate) fn prefetch_around(&mut self, spread: bool) {
-        for page in prefetch_targets(self.current, self.pages.len(), self.depth, spread) {
+    pub(crate) fn prefetch_around(&mut self) {
+        let targets = prefetch_targets(
+            self.current,
+            self.pages.len(),
+            self.depth,
+            self.viewport.spread,
+        );
+        for page in targets {
             self.request(page);
         }
     }
 
     fn needs_request(&self, page: usize) -> bool {
-        page < self.pages.len() && !self.has_cached_page(page) && !self.errors.contains_key(&page)
+        page < self.pages.len() && !self.has_page(page) && !self.errors.contains_key(&page)
     }
 
     fn request(&mut self, page: usize) {
@@ -204,20 +195,17 @@ impl Viewer {
             .request(page, page_info.entry, page_info.name.clone(), false);
     }
 
-    /// Resizes an arrived decoded page to the current window preview, caches
-    /// the display image and drops the decoded original.
+    /// Resizes a decoded page once to its display size and caches it. Spread
+    /// pages are fitted to a half-window cell; single pages use the whole
+    /// window. The decoded original is dropped.
     pub(crate) fn insert_decoded(&mut self, page: usize, image: Arc<RgbaImage>) {
         let (width, height) = image.dimensions();
-        let target = view::fit(
-            width,
-            height,
-            self.viewport.width as usize,
-            self.viewport.height as usize,
-        );
+        let (cell_width, cell_height) = display_size(self.viewport);
+        let target = view::fit(width, height, cell_width as usize, cell_height as usize);
         if target.0 == 0 || target.1 == 0 {
             self.rejected.insert(page);
             debug_log::log(format_args!(
-                "viewer: skip empty preview page={} source={}x{}",
+                "viewer: skip empty display page={} source={}x{}",
                 page + 1,
                 width,
                 height
@@ -225,61 +213,43 @@ impl Viewer {
             return;
         }
 
-        self.sizes.insert(page, (width, height));
-        let preview = if target == image.dimensions() {
+        let display = if target == image.dimensions() {
             image
         } else {
             resized(&image, target, self.viewport.filter)
         };
-        let preview_size = preview.dimensions();
-        let key = ScaledKey::new(page, preview_size.0, preview_size.1, self.viewport.filter);
+        let display_size = display.dimensions();
         let next = self.current.saturating_add(1);
         let keep = [self.current, next];
-        let retained = self.cache.insert(key, preview, &keep, self.current);
+        let retained = self.cache.insert(page, display, &keep, self.current);
         if retained {
             self.rejected.remove(&page);
         } else {
             self.rejected.insert(page);
         }
         debug_log::log(format_args!(
-            "viewer: preview page={} {}x{} -> {}x{} filter={} cached={retained}",
+            "viewer: display page={} {}x{} -> {}x{} filter={} cached={retained}",
             page + 1,
             width,
             height,
-            preview_size.0,
-            preview_size.1,
+            display_size.0,
+            display_size.1,
             self.viewport.filter.as_str()
         ));
     }
 
-    fn has_cached_page(&self, page: usize) -> bool {
-        self.cache.contains_page(page, self.viewport.filter)
-    }
-
     pub(crate) fn has_page(&self, page: usize) -> bool {
-        self.has_cached_page(page)
+        self.cache.contains(page)
     }
 
-    /// Returns the largest cached image for a page. If the window preview was
-    /// evicted but the exact spread-size image survived, drawing can still use
-    /// it instead of decoding the page again.
-    fn visible(&self, page: usize) -> Option<VisiblePage> {
-        let image = self.cache.get_page(page, self.viewport.filter)?;
-        let original_size = *self.sizes.get(&page)?;
-        Some(VisiblePage {
-            index: page,
-            image,
-            original_size,
-        })
+    fn visible(&self, page: usize) -> Option<Arc<RgbaImage>> {
+        self.cache.get(page)
     }
 
     /// Returns the current page, the next page in spread mode, and whether the
-    /// next page is still loading. Images are window previews; original page
-    /// dimensions are returned separately for spread layout.
-    pub(crate) fn visible_pages(
-        &self,
-        spread: bool,
-    ) -> (Option<VisiblePage>, Option<VisiblePage>, bool) {
+    /// next page is still loading.
+    pub(crate) fn visible_pages(&self) -> (Option<Arc<RgbaImage>>, Option<Arc<RgbaImage>>, bool) {
+        let spread = self.viewport.spread;
         let next = if spread {
             self.visible(self.current + 1)
         } else {
@@ -290,6 +260,16 @@ impl Viewer {
             && next.is_none()
             && !self.errors.contains_key(&(self.current + 1));
         (self.visible(self.current), next, waiting)
+    }
+}
+
+/// Size of the display image for a page. Spread mode uses one half of the
+/// window as the cell for each page.
+fn display_size(viewport: Viewport) -> (u32, u32) {
+    if viewport.spread {
+        ((viewport.width / 2).max(1), viewport.height)
+    } else {
+        (viewport.width, viewport.height)
     }
 }
 
@@ -314,7 +294,8 @@ fn prefetch_targets(current: usize, len: usize, depth: usize, spread: bool) -> V
 
 #[cfg(test)]
 mod tests {
-    use super::{FrameState, frame_state, prefetch_targets};
+    use super::{FrameState, Viewport, display_size, frame_state, prefetch_targets};
+    use crate::config::ScaleFilter;
 
     #[test]
     fn failed_pages_do_not_keep_the_previous_frame() {
@@ -336,5 +317,14 @@ mod tests {
         assert_eq!(prefetch_targets(0, 3, 2, true), vec![2]);
         assert_eq!(prefetch_targets(8, 10, 2, true), Vec::<usize>::new());
         assert_eq!(prefetch_targets(9, 10, 2, false), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn spread_display_images_fit_half_the_window() {
+        let single = Viewport::new(1200, 900, ScaleFilter::Triangle, false);
+        assert_eq!(display_size(single), (1200, 900));
+
+        let spread = Viewport::new(1200, 900, ScaleFilter::Triangle, true);
+        assert_eq!(display_size(spread), (600, 900));
     }
 }

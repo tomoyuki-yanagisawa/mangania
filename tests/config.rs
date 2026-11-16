@@ -22,7 +22,7 @@ fn parses_all_config_fields() {
     assert_eq!(config.cache_mb, 64);
     assert_eq!(config.scale_filter, ScaleFilter::Lanczos3);
     assert!(config.debug);
-    assert_eq!(config.cache_entries(), 12);
+    assert_eq!(config.cache_entries(), 6);
     assert_eq!(config.cache_bytes(), 64 * 1024 * 1024);
 }
 
@@ -31,7 +31,7 @@ fn uses_defaults_for_prefetch_and_cache() {
     let config = Config::default();
     assert_eq!(config.prefetch, DEFAULT_PREFETCH);
     assert_eq!(config.cache_pages, DEFAULT_CACHE_PAGES);
-    assert_eq!(config.cache_entries(), DEFAULT_CACHE_PAGES * 2);
+    assert_eq!(config.cache_entries(), DEFAULT_CACHE_PAGES);
     assert_eq!(config.cache_mb, DEFAULT_CACHE_MB);
     assert_eq!(config.cache_bytes(), DEFAULT_CACHE_MB * 1024 * 1024);
     let empty = Config::parse("");
@@ -40,7 +40,7 @@ fn uses_defaults_for_prefetch_and_cache() {
     assert_eq!(empty.cache_mb, DEFAULT_CACHE_MB);
 
     let no_cache = Config::parse("cache_pages = 0\ncache_mb = 0\n");
-    assert_eq!(no_cache.cache_entries(), DEFAULT_CACHE_PAGES * 2);
+    assert_eq!(no_cache.cache_entries(), DEFAULT_CACHE_PAGES);
     assert_eq!(no_cache.cache_bytes(), DEFAULT_CACHE_MB * 1024 * 1024);
 }
 

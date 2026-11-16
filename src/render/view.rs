@@ -1,55 +1,54 @@
-use std::sync::Arc;
-
 use image::RgbaImage;
 
-use crate::config::ScaleFilter;
-use crate::debug_log;
-use crate::render::cache::{ScaledCache, ScaledKey};
-use crate::render::resize::resized;
-
 const BACKGROUND: u32 = 0x20_20_20;
-
-/// A page ready to draw.
-#[derive(Clone, Copy)]
-pub struct RenderPage<'a> {
-    /// Page index in the archive.
-    pub index: usize,
-    /// Display-sized image.
-    pub image: &'a RgbaImage,
-    /// Original page dimensions, used to lay out spreads.
-    pub original_size: (u32, u32),
-}
 
 /// Fills the window with the background color.
 pub fn blank(buffer: &mut [u32]) {
     buffer.fill(BACKGROUND);
 }
 
-/// Fits the given pages side by side, preserving their relative sizes.
+/// Draws one page centered, or two pages in left/right cells.
 ///
-/// Uses a temporary cache and the default filter. The GUI retains its cache
-/// between calls via [`render_pages_cached`].
+/// Spread pages meet at the middle gutter: the left page is aligned to the
+/// right edge of the left cell, and the right page to the left edge of the
+/// right cell. Missing pages leave their cell blank. Images are expected to
+/// be display-sized already; this function only copies pixels.
 pub fn render_pages(buffer: &mut [u32], width: usize, height: usize, pages: &[Option<&RgbaImage>]) {
-    let pages: Vec<_> = pages
-        .iter()
-        .enumerate()
-        .map(|(index, page)| {
-            page.map(|image| RenderPage {
-                index,
-                image,
-                original_size: image.dimensions(),
-            })
-        })
-        .collect();
-    render_pages_cached(
-        buffer,
-        width,
-        height,
-        &pages,
-        ScaleFilter::Triangle,
-        0,
-        &mut ScaledCache::new(0, 0),
-    );
+    blank(buffer);
+    if width == 0 || height == 0 {
+        return;
+    }
+
+    if let [page] = pages {
+        if let Some(image) = page {
+            place(buffer, width, height, image, Center::Full);
+        }
+        return;
+    }
+
+    let gutter = width / 2;
+    if let Some(image) = pages.first().copied().flatten() {
+        place(buffer, width, height, image, Center::LeftCell { gutter });
+    }
+    if let Some(image) = pages.get(1).copied().flatten() {
+        place(buffer, width, height, image, Center::RightCell { gutter });
+    }
+}
+
+enum Center {
+    Full,
+    LeftCell { gutter: usize },
+    RightCell { gutter: usize },
+}
+
+fn place(buffer: &mut [u32], width: usize, height: usize, image: &RgbaImage, center: Center) {
+    let x = match center {
+        Center::Full => (width as isize - image.width() as isize) / 2,
+        Center::LeftCell { gutter } => gutter as isize - image.width() as isize,
+        Center::RightCell { gutter } => gutter as isize,
+    };
+    let y = (height as isize - image.height() as isize) / 2;
+    blit(buffer, width, height, image, x, y);
 }
 
 /// Returns the display size of an image fitted into the viewport while
@@ -60,79 +59,6 @@ pub fn fit(width: u32, height: u32, max_width: usize, max_height: usize) -> (u32
     }
     let scale = (max_width as f64 / width as f64).min(max_height as f64 / height as f64);
     scaled(width, height, scale)
-}
-
-/// Fits the given pages side by side and reuses resized pages from `cache`.
-///
-/// `pages` holds the page index, its display-sized image, and the original
-/// dimensions used for layout. Entries for the pages being drawn are kept even
-/// when the cache is full.
-pub fn render_pages_cached(
-    buffer: &mut [u32],
-    width: usize,
-    height: usize,
-    pages: &[Option<RenderPage<'_>>],
-    filter: ScaleFilter,
-    current: usize,
-    cache: &mut ScaledCache,
-) {
-    blank(buffer);
-    if width == 0 || height == 0 {
-        return;
-    }
-
-    let total_width: u32 = pages
-        .iter()
-        .flatten()
-        .map(|page| page.original_size.0)
-        .sum();
-    let max_height = pages
-        .iter()
-        .flatten()
-        .map(|page| page.original_size.1)
-        .max()
-        .unwrap_or(0);
-    if total_width == 0 || max_height == 0 {
-        debug_log::log(format_args!(
-            "view: empty page (width={total_width} height={max_height})"
-        ));
-        return;
-    }
-
-    let scale = (width as f64 / total_width as f64).min(height as f64 / max_height as f64);
-    let (draw_width, draw_height) = scaled(total_width, max_height, scale);
-    let start_x = (width as isize - draw_width as isize) / 2;
-    let start_y = (height as isize - draw_height as isize) / 2;
-
-    let mut x = start_x;
-    let keep: Vec<usize> = pages.iter().flatten().map(|page| page.index).collect();
-    for page in pages.iter().flatten() {
-        let (target_width, target_height) =
-            scaled(page.original_size.0, page.original_size.1, scale);
-        let y = start_y + (draw_height as isize - target_height as isize) / 2;
-        let target = (target_width, target_height);
-        if target == page.image.dimensions() {
-            blit(buffer, width, height, page.image, x, y);
-        } else {
-            let key = ScaledKey::new(page.index, target_width, target_height, filter);
-            let display = if let Some(resized) = cache.get(key) {
-                debug_log::log(format_args!(
-                    "view: resize cache hit page={} size={}x{} filter={}",
-                    page.index + 1,
-                    target_width,
-                    target_height,
-                    filter.as_str()
-                ));
-                resized
-            } else {
-                let resized = resized(page.image, target, filter);
-                cache.insert(key, Arc::clone(&resized), &keep, current);
-                resized
-            };
-            blit(buffer, width, height, &display, x, y);
-        }
-        x += target_width as isize;
-    }
 }
 
 fn scaled(width: u32, height: u32, scale: f64) -> (u32, u32) {
