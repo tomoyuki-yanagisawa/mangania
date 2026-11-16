@@ -15,6 +15,7 @@ pub mod headless;
 pub(crate) mod menu;
 pub mod navigation;
 pub mod open;
+pub(crate) mod platform;
 pub mod prefetch;
 pub mod view;
 pub(crate) mod viewer;

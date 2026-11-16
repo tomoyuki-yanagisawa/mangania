@@ -1,9 +1,9 @@
-#[cfg(target_os = "windows")]
-use std::cell::Cell;
-
 use muda::{CheckMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
 use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
+
+#[cfg(target_os = "windows")]
+use crate::platform::windows::menu::NativeMenu;
 
 use crate::bindings::Action;
 use crate::config::ScaleFilter;
@@ -21,10 +21,10 @@ pub struct MenuBar {
     pub fullscreen: CheckMenuItem,
     filters: Vec<(ScaleFilter, CheckMenuItem)>,
     menu: Menu,
-    /// Menu detached from the window by [`MenuBar::set_native_menu_visible`].
-    /// `0` means the menu is currently attached (or was never attached).
+    /// Native menu bar state, including the saved `HMENU` used to restore the
+    /// menu after fullscreen.
     #[cfg(target_os = "windows")]
-    saved_hmenu: Cell<isize>,
+    native: NativeMenu,
 }
 
 impl MenuBar {
@@ -99,7 +99,7 @@ impl MenuBar {
             filters,
             menu,
             #[cfg(target_os = "windows")]
-            saved_hmenu: Cell::new(0),
+            native: NativeMenu::default(),
         }
     }
 
@@ -142,68 +142,23 @@ impl MenuBar {
         }
     }
 
-    pub fn attach(&self, _window: &Window) {
+    pub fn attach(&self, window: &Window) {
         #[cfg(target_os = "macos")]
-        self.menu.init_for_nsapp();
+        {
+            let _ = window;
+            self.menu.init_for_nsapp();
+        }
 
         #[cfg(target_os = "windows")]
-        if let Some(hwnd) = hwnd_of(_window) {
-            // SAFETY: the HWND comes from the live winit window.
-            unsafe {
-                if let Err(error) = self.menu.init_for_hwnd(hwnd) {
-                    eprintln!("mangania: create menu: {error}");
-                }
-            }
-        }
+        self.native.attach(&self.menu, window);
     }
 
     /// Shows or hides the native menu bar attached to `window`.
     ///
-    /// Win32 has no dedicated hide call, so the menu bar is detached with
-    /// `SetMenu(hwnd, NULL)`. The `HMENU` returned by `GetMenu` is saved first
-    /// and restored afterwards, which keeps the exact same menu (including the
-    /// check state of the view items) across repeated fullscreen toggles.
+    /// The Win32-specific detach/restore handling lives in
+    /// [`crate::platform::windows::menu::NativeMenu`].
     #[cfg(target_os = "windows")]
     pub fn set_native_menu_visible(&self, window: &Window, visible: bool) {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{DrawMenuBar, GetMenu, SetMenu};
-
-        let Some(hwnd) = hwnd_of(window) else {
-            return;
-        };
-        // SAFETY: `hwnd` belongs to the live winit window. `saved_hmenu` is the
-        // menu that `attach` installed on the same window, and it is only kept
-        // while the window is alive.
-        unsafe {
-            if visible {
-                let saved = self.saved_hmenu.replace(0);
-                if saved != 0 {
-                    SetMenu(hwnd, saved);
-                    DrawMenuBar(hwnd);
-                }
-            } else {
-                let current = GetMenu(hwnd);
-                if current == 0 {
-                    // Already hidden; keep the handle saved by the first call.
-                    return;
-                }
-                if self.saved_hmenu.get() == 0 {
-                    self.saved_hmenu.set(current);
-                }
-                SetMenu(hwnd, 0);
-                DrawMenuBar(hwnd);
-            }
-        }
-    }
-}
-
-/// Returns the `HWND` behind a live winit window.
-#[cfg(target_os = "windows")]
-fn hwnd_of(window: &Window) -> Option<isize> {
-    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
-
-    let handle = window.window_handle().ok()?;
-    match handle.as_raw() {
-        RawWindowHandle::Win32(handle) => Some(handle.hwnd.get()),
-        _ => None,
+        self.native.set_visible(window, visible);
     }
 }
