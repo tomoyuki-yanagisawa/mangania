@@ -175,22 +175,33 @@ fn blit(
     offset_x: isize,
     offset_y: isize,
 ) {
-    let x_start = (-offset_x).max(0) as u32;
-    let y_start = (-offset_y).max(0) as u32;
-    let x_end = (width as isize - offset_x)
-        .min(image.width() as isize)
-        .max(0) as u32;
-    let y_end = (height as isize - offset_y)
-        .min(image.height() as isize)
-        .max(0) as u32;
+    let image_width = image.width() as usize;
+    let image_height = image.height() as usize;
+    if width == 0 || height == 0 || image_width == 0 || image_height == 0 {
+        return;
+    }
 
+    let x_start = (-offset_x).max(0) as usize;
+    let y_start = (-offset_y).max(0) as usize;
+    let x_end = (width as isize - offset_x).min(image_width as isize).max(0) as usize;
+    let y_end = (height as isize - offset_y)
+        .min(image_height as isize)
+        .max(0) as usize;
+    if x_start >= x_end || y_start >= y_end {
+        return;
+    }
+
+    let dest_x = (offset_x + x_start as isize) as usize;
+    let row_len = x_end - x_start;
+    let source = image.as_raw();
     for y in y_start..y_end {
         let dest_y = (offset_y + y as isize) as usize;
-        for x in x_start..x_end {
-            let dest_x = (offset_x + x as isize) as usize;
-            let [red, green, blue, _alpha] = image.get_pixel(x, y).0;
-            buffer[dest_y * width + dest_x] =
-                ((red as u32) << 16) | ((green as u32) << 8) | blue as u32;
+        let source_start = (y * image_width + x_start) * 4;
+        let source_row = &source[source_start..source_start + row_len * 4];
+        let dest_row = &mut buffer[dest_y * width + dest_x..][..row_len];
+        let (pixels, _) = source_row.as_chunks::<4>();
+        for (dest, pixel) in dest_row.iter_mut().zip(pixels) {
+            *dest = (u32::from(pixel[0]) << 16) | (u32::from(pixel[1]) << 8) | u32::from(pixel[2]);
         }
     }
 }
