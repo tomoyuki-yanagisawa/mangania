@@ -1,7 +1,5 @@
 //! macOS native menu bar.
 
-use std::cell::RefCell;
-
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send, sel};
@@ -23,9 +21,8 @@ pub(crate) fn disable_default_menu(builder: &mut EventLoopBuilder<UserEvent>) {
     builder.with_default_menu(false);
 }
 
-#[derive(Default)]
 struct MenuTargetIvars {
-    proxy: RefCell<Option<EventLoopProxy<UserEvent>>>,
+    proxy: EventLoopProxy<UserEvent>,
 }
 
 define_class!(
@@ -41,18 +38,14 @@ define_class!(
             let Some(command) = MenuCommand::from_id(sender.tag() as u16) else {
                 return;
             };
-            if let Some(proxy) = self.ivars().proxy.borrow().as_ref() {
-                let _ = proxy.send_event(UserEvent::Menu(command));
-            }
+            let _ = self.ivars().proxy.send_event(UserEvent::Menu(command));
         }
     }
 );
 
 impl MenuTarget {
     fn new(mtm: MainThreadMarker, proxy: EventLoopProxy<UserEvent>) -> Retained<Self> {
-        let this = mtm.alloc().set_ivars(MenuTargetIvars {
-            proxy: RefCell::new(Some(proxy)),
-        });
+        let this = mtm.alloc().set_ivars(MenuTargetIvars { proxy });
         // SAFETY: `NSObject`'s `init` has no additional requirements.
         unsafe { msg_send![super(this), init] }
     }
