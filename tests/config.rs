@@ -116,19 +116,49 @@ fn writes_default_config_on_first_load() {
 }
 
 #[test]
-fn keeps_existing_config_file() {
+fn completes_existing_config_file() {
     let dir = std::env::temp_dir().join(format!("mangania-config-existing-{}", std::process::id()));
     let path = dir.join("config.toml");
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(&path, "mode = \"spread\"\n").unwrap();
+    std::fs::write(
+        &path,
+        "# keep this comment\nmode = \"spread\"\ncustom = \"keep\"\n\n[custom_table]\nvalue = 3\n",
+    )
+    .unwrap();
 
     let config = Config::load_or_create_from(&path);
 
     assert_eq!(config.mode, DisplayMode::Spread);
-    assert_eq!(
-        std::fs::read_to_string(&path).unwrap(),
-        "mode = \"spread\"\n"
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("# keep this comment"));
+    assert!(text.contains("mode = \"spread\""));
+    assert!(text.contains("custom = \"keep\""));
+    assert!(text.contains("[custom_table]"));
+    assert!(text.contains("value = 3"));
+    assert!(text.contains("prefetch = 2"));
+    assert!(text.contains("scale_filter = \"triangle\""));
+    assert!(
+        text.find("prefetch = 2").unwrap() < text.find("[custom_table]").unwrap(),
+        "root keys must stay outside custom tables:\n{text}"
     );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn completion_is_idempotent() {
+    let dir =
+        std::env::temp_dir().join(format!("mangania-config-idempotent-{}", std::process::id()));
+    let path = dir.join("config.toml");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(&path, "mode = \"spread\"\n").unwrap();
+
+    Config::load_or_create_from(&path);
+    let first = std::fs::read_to_string(&path).unwrap();
+    Config::load_or_create_from(&path);
+    let second = std::fs::read_to_string(&path).unwrap();
+
+    assert_eq!(first, second);
+    assert!(second.contains("mode = \"spread\""));
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -170,6 +200,18 @@ fn saves_display_mode_and_preserves_other_settings() {
     let loaded = Config::load_or_create_from(&path);
     assert_eq!(loaded.mode, DisplayMode::Mixed);
     assert_eq!(loaded.prefetch, 7);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn invalid_toml_is_not_overwritten() {
+    let dir = std::env::temp_dir().join(format!("mangania-config-syntax-{}", std::process::id()));
+    let path = dir.join("config.toml");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(&path, "mode = \n").unwrap();
+    let config = Config::load_or_create_from(&path);
+    assert_eq!(config, Config::default());
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "mode = \n");
     std::fs::remove_dir_all(dir).unwrap();
 }
 

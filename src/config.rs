@@ -129,6 +129,13 @@ impl Config {
         {
             eprintln!("mangania: write default config {}: {error}", path.display());
         }
+        if let Err(error) =
+            crate::config_file::complete_file(path, &Self::default().to_toml(), |text| {
+                toml::from_str::<Self>(text).is_ok()
+            })
+        {
+            eprintln!("mangania: update config {}: {error}", path.display());
+        }
         Self::load_from(path)
     }
 
@@ -238,7 +245,7 @@ fn validate_existing<T: for<'de> Deserialize<'de>>(path: &Path) -> io::Result<()
     }
 }
 
-fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
+pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
     static NEXT_ID: AtomicU64 = AtomicU64::new(0);
     let parent = path
         .parent()

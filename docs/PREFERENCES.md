@@ -110,6 +110,8 @@ save_page = ["double_left"]
 
 `config.toml` はコメント付きで生成され、そのまま編集できる。既定の保存先は `~/Pictures/MangaNia`。出力先がなければ作成する。
 
+`config.toml`、`keybindings.toml`、`mouse.toml` は、既存ファイルに不足キーがあれば起動時に追記する。既存の値・コメント・未知キー・明示的な `[]` は変更しない。壊れた TOML や、現在の設定形式として解釈できないファイルは変更しない。既存の `double_click_ms = 400` は、既定値が 500 になっても 400 のまま残る。
+
 展開済みページのディスクキャッシュ:
 
 - Windows: `%LOCALAPPDATA%\mangania\cache`（未設定時は `%USERPROFILE%\AppData\Local\mangania\cache`、それも使えなければ OS の一時ディレクトリ）

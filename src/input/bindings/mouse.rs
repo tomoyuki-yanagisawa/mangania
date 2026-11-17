@@ -1,12 +1,13 @@
 //! Mouse binding parsing and matching.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::time::Duration;
 
 use serde::Deserialize;
 use winit::event::MouseButton;
 
-use super::{Action, load_bindings, resolve_bindings};
+use super::{Action, load_bindings, load_bindings_from, resolve_bindings};
 
 pub const MOUSE_FILE: &str = "mouse.toml";
 pub const DEFAULT_WHEEL_THRESHOLD: f32 = 50.0;
@@ -105,7 +106,15 @@ impl Default for MouseBindings {
 
 impl MouseBindings {
     pub fn load() -> Self {
-        load_bindings(MOUSE_FILE, DEFAULT_MOUSE, Self::parse)
+        load_bindings(MOUSE_FILE, DEFAULT_MOUSE, Self::is_valid, Self::parse)
+    }
+
+    pub fn load_from(path: &Path) -> Self {
+        load_bindings_from(path, DEFAULT_MOUSE, Self::is_valid, Self::parse)
+    }
+
+    fn is_valid(text: &str) -> bool {
+        toml::from_str::<RawMouseBindings>(text).is_ok()
     }
 
     pub fn parse(text: &str) -> Self {

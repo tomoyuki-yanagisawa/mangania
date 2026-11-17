@@ -9,6 +9,7 @@ image = { version = "0.25.10", default-features = false, features = ["jpeg", "pn
 serde = { version = "1.0.229", features = ["derive"] }
 softbuffer = "0.4.8"
 toml = "1.2.1"
+toml_edit = "0.25.19"
 winit = "0.30.12"
 zip = { version = "9.5.1", default-features = false, features = ["deflate"] }
 
