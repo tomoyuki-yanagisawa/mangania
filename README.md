@@ -284,7 +284,7 @@ cargo +nightly build -Z build-std --target x86_64-win7-windows-msvc --release
 - 通常の `windows-x86_64` 版は Windows 10 以降向けです。Windows 7 ではこの手順か、Release の `windows7-x86_64` を使ってください。
 - MSVC ツールチェーンと、Windows 7 側の Universal CRT 更新が必要です。
 - `winit` は Windows 10 以降の DPI API を動的に読み込み、存在しない場合はフォールバックします。
-- ネイティブメニューは `muda` を使用しています。
+- ネイティブメニューは OS の API を `src/platform/` で直接使用しています（Windows は Win32、macOS は AppKit）。
 - **Windows 7 実機での検証は未実施です。** クリーンな Win7 SP1 x64 環境での起動確認が残っています。
 
 ## 構成
@@ -320,14 +320,13 @@ src/
 ├── storage/
 │   ├── mod.rs
 │   └── disk_cache.rs # 展開済みページのディスクキャッシュ（手動削除）
-├── ui/
-│   ├── mod.rs
-│   └── menu.rs  # Windows / macOS のネイティブメニュー（共通レイアウト）
 ├── platform/
-│   └── windows/
-│       ├── activation.rs # アクティブ化クリックの破棄
-│       ├── menu.rs     # HWND / HMENU とメニュー表示
-│       └── shortcut.rs # .lnk の COM 解決
+│   ├── menu.rs     # OS 非依存のメニューコマンド、チェック状態
+│   ├── windows/
+│   │   ├── menu.rs     # Win32 メニューバー、WM_COMMAND / アクティブ化クリック
+│   │   └── shortcut.rs # .lnk の COM 解決
+│   └── macos/
+│       └── menu.rs     # AppKit のシステムメニューバー
 ├── config.rs    # TOML設定（表示・保存・縮小フィルタの永続化）
 ├── event.rs     # winit/menu のユーザーイベント
 ├── debug_log.rs # デバッグログ出力

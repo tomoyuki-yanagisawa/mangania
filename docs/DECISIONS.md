@@ -15,6 +15,8 @@
 
 **影響**: メニューは Windows / macOS のみ。Linux はキーバインドでの操作になる。UI 部品は自前で最小限にする。
 
+**更新 (ADR-026)**: `muda` は削除し、メニューは Windows の Win32 と macOS の AppKit を `src/platform/` で直接扱う。共通部分は `MenuCommand` / `MenuState` だけにした。
+
 ## ADR-002: ZIP は zip crate で直接読む
 
 **背景**: 初期設計では libarchive を暫定候補にしていた。
@@ -216,3 +218,13 @@
 **理由**: Windows のイベント順序では、クリックがアプリに届く時点でフォーカス済みになっている場合がある。`WM_MOUSEACTIVATE` は OS がアクティブ化クリックを破棄できる正規の入口で、フォーカス時刻や猶予時間のような推測が不要になる。プラットフォーム固有の unsafe コードは `platform/windows` に閉じ込める。
 
 **影響**: Windows で非アクティブなウィンドウのクライアント領域をクリックすると、そのクリックではページ送り・保存などが実行されない。タイトルバーやすでにアクティブなウィンドウの操作は変わらない。ホイールによるページ送りは対象外。
+
+## ADR-026: ネイティブメニューは OS の API を直接使う
+
+**背景**: メニューを `muda` に任せると、OS 固有のメニュー挙動をアプリ側から制御しにくい。Windows のイベント順序、全画面時のメニュー取り外し、macOS のシステムメニューバーを、アプリの状態と直接結び付けたい。
+
+**決定**: `muda` を削除する。OS 非依存の `MenuCommand` / `MenuState` だけを `platform/menu.rs` に置き、Windows は `CreateMenu` / `AppendMenuW` / `WM_COMMAND` と `SetWindowSubclass` を、macOS は `NSMenu` / `NSMenuItem` と target/action を `platform/` 配下で実装する。Linux は従来どおりメニューを持たない。メニュー操作は `UserEvent::Menu(MenuCommand)` としてイベントループへ戻し、実行とチェック状態の同期は `App` が行う。
+
+**理由**: メニューの生成・表示・チェック状態をアプリの状態と同じ場所で扱える。Windows では全画面時に同一の `HMENU` を取り外して戻せる。macOS では標準のアプリケーションメニューを維持しつつ、ウィンドウ内メニューを持ち込まずに済む。依存も1つ減る。
+
+**影響**: Windows と macOS のメニュー実装は自前で保守する。Windows のメッセージ受信はウィンドウごとの subclass に閉じ込め、macOS の AppKit 呼び出しはメインスレッドに限定する。キーボードショートカットは従来どおり `keybindings.toml` と winit が担当し、メニュー項目にはアクセラレータを付けない（終了の Cmd+Q を除く）。

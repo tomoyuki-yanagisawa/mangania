@@ -1,8 +1,37 @@
-#[cfg(not(windows))]
-use std::path::{Path, PathBuf};
+use winit::event_loop::{EventLoop, EventLoopBuilder};
 
+use crate::event::UserEvent;
+
+#[cfg(target_os = "macos")]
+pub(crate) mod macos;
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+pub(crate) mod menu;
 #[cfg(windows)]
 pub(crate) mod windows;
+
+#[cfg(target_os = "macos")]
+pub(crate) use macos::menu::MenuBar;
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+pub(crate) use menu::{MenuCommand, MenuState};
+#[cfg(windows)]
+pub(crate) use windows::menu::MenuBar;
+
+/// Creates the event loop builder with each platform's menu setup applied.
+pub(crate) fn event_loop_builder() -> EventLoopBuilder<UserEvent> {
+    #[cfg(target_os = "macos")]
+    {
+        let mut builder = EventLoop::<UserEvent>::with_user_event();
+        macos::menu::disable_default_menu(&mut builder);
+        builder
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        EventLoop::<UserEvent>::with_user_event()
+    }
+}
+
+#[cfg(not(windows))]
+use std::path::{Path, PathBuf};
 
 /// Resolves a Windows shortcut to the path it points to.
 #[cfg(windows)]

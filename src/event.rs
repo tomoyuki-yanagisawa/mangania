@@ -9,5 +9,5 @@ pub enum UserEvent {
         result: Result<std::path::PathBuf, String>,
     },
     #[cfg(any(target_os = "windows", target_os = "macos"))]
-    Menu(muda::MenuEvent),
+    Menu(crate::platform::MenuCommand),
 }
