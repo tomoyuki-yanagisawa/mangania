@@ -77,7 +77,7 @@ impl App {
             width,
             height,
             page,
-            frame.kind(),
+            frame.kind().as_str(),
             cached
         ));
 
@@ -140,6 +140,7 @@ impl App {
             return;
         }
 
+        let before = viewer.frame().kind();
         for (page, result) in results {
             match result {
                 Ok(image) => {
@@ -160,7 +161,12 @@ impl App {
             }
         }
 
-        self.refresh();
+        // Prefetched pages only change the screen when they complete the
+        // current display. Redrawing for them would present the same image
+        // again, which looks like a flicker on some systems.
+        if viewer.frame().kind() != before {
+            self.refresh();
+        }
     }
 }
 
