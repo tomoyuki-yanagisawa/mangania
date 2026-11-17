@@ -1,7 +1,34 @@
-//! Platform-independent menu commands and check states.
+//! Platform-independent menu commands, labels, and check states.
 
 use crate::config::{DisplayMode, ScaleFilter};
 use crate::input::bindings::Action;
+
+/// Text shared by the Windows and macOS menu bars.
+///
+/// The application name is not here because only Windows uses it as a submenu
+/// title.
+pub(crate) mod labels {
+    pub(crate) const FILE: &str = "ファイル";
+    pub(crate) const NAVIGATION: &str = "移動";
+    pub(crate) const VIEW: &str = "表示";
+    pub(crate) const FILTERS: &str = "縮小フィルタ";
+    pub(crate) const SAVE_PAGE: &str = "表示中のページを保存";
+    pub(crate) const CLEAR_CACHE: &str = "キャッシュを削除";
+    pub(crate) const FULLSCREEN: &str = "全画面表示";
+    pub(crate) const QUIT: &str = "終了";
+    pub(crate) const NEXT: &str = "次のページ";
+    pub(crate) const PREV: &str = "前のページ";
+    pub(crate) const FIRST: &str = "先頭へ";
+    pub(crate) const LAST: &str = "末尾へ";
+}
+
+/// Navigation items in menu order.
+pub(crate) const NAVIGATION_ITEMS: [(&str, Action); 4] = [
+    (labels::NEXT, Action::Next),
+    (labels::PREV, Action::Prev),
+    (labels::FIRST, Action::First),
+    (labels::LAST, Action::Last),
+];
 
 /// A command selected from the native menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

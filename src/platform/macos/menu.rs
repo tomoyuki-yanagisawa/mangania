@@ -14,6 +14,7 @@ use winit::platform::macos::EventLoopBuilderExtMacOS;
 use crate::config::{DisplayMode, ScaleFilter};
 use crate::event::UserEvent;
 use crate::input::bindings::Action;
+use crate::platform::menu::{NAVIGATION_ITEMS, labels};
 use crate::platform::{MenuCommand, MenuState, action_for_mode};
 
 /// Lets the app install its own system menu instead of winit's default menu.
@@ -82,37 +83,32 @@ impl MenuBar {
         let app = NSMenu::new(mtm);
         let app_item = NSMenuItem::new(mtm);
         app_item.setSubmenu(Some(&app));
-        let quit = item(mtm, &target, "終了", MenuCommand::ExitApplication);
+        let quit = item(mtm, &target, labels::QUIT, MenuCommand::ExitApplication);
         quit.setKeyEquivalent(ns_string!("q"));
         app.addItem(&quit);
         menu.addItem(&app_item);
 
-        let file = submenu(mtm, &menu, "ファイル");
+        let file = submenu(mtm, &menu, labels::FILE);
         file.addItem(&item(
             mtm,
             &target,
-            "表示中のページを保存",
+            labels::SAVE_PAGE,
             MenuCommand::Action(Action::SavePage),
         ));
         file.addItem(&NSMenuItem::separatorItem(mtm));
         file.addItem(&item(
             mtm,
             &target,
-            "キャッシュを削除",
+            labels::CLEAR_CACHE,
             MenuCommand::ClearDiskCache,
         ));
 
-        let navigation = submenu(mtm, &menu, "移動");
-        for (label, action) in [
-            ("次のページ", Action::Next),
-            ("前のページ", Action::Prev),
-            ("先頭へ", Action::First),
-            ("末尾へ", Action::Last),
-        ] {
+        let navigation = submenu(mtm, &menu, labels::NAVIGATION);
+        for (label, action) in NAVIGATION_ITEMS {
             navigation.addItem(&item(mtm, &target, label, MenuCommand::Action(action)));
         }
 
-        let view = submenu(mtm, &menu, "表示");
+        let view = submenu(mtm, &menu, labels::VIEW);
         let single = check_item(mtm, &target, DisplayMode::Single, mode);
         let spread = check_item(mtm, &target, DisplayMode::Spread, mode);
         let mixed = check_item(mtm, &target, DisplayMode::Mixed, mode);
@@ -123,13 +119,13 @@ impl MenuBar {
         let fullscreen = check_item_for(
             mtm,
             &target,
-            "全画面表示",
+            labels::FULLSCREEN,
             MenuCommand::Action(Action::ToggleFullscreen),
             false,
         );
         view.addItem(&fullscreen);
 
-        let filter_menu = submenu(mtm, &view, "縮小フィルタ");
+        let filter_menu = submenu(mtm, &view, labels::FILTERS);
         let mut filters = Vec::with_capacity(ScaleFilter::ALL.len());
         for filter in ScaleFilter::ALL {
             let filter_item = item(
