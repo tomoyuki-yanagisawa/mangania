@@ -14,7 +14,7 @@ impl App {
             .window
             .as_ref()
             .map(|window| {
-                let size = window.inner_size();
+                let size = window.size();
                 (size.width, size.height)
             })
             .unwrap_or((0, 0));
@@ -37,24 +37,16 @@ impl App {
     }
 
     pub(super) fn draw(&mut self) {
-        let Some(window) = &self.window else {
+        let Some(window) = self.window.as_mut() else {
             return;
         };
-        let Some(surface) = self.surface.as_mut() else {
-            return;
-        };
-        let size = window.inner_size();
+        let size = window.size();
         let (Some(width), Some(height)) =
             (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
         else {
             return;
         };
-        if let Err(error) = surface.resize(width, height) {
-            debug_log::log(format_args!("surface resize failed: {error}"));
-            return;
-        }
-        let Ok(mut buffer) = surface.buffer_mut() else {
-            debug_log::log(format_args!("surface buffer unavailable"));
+        let Some(mut buffer) = window.buffer_mut(width, height) else {
             return;
         };
 

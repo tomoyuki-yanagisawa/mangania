@@ -7,15 +7,13 @@ mod window_icon;
 
 use std::error::Error;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Instant;
 
 use winit::application::ApplicationHandler;
-use winit::dpi::LogicalSize;
 use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoopProxy};
 use winit::keyboard::ModifiersState;
-use winit::window::{Window, WindowId};
+use winit::window::WindowId;
 
 use crate::config::Config;
 use crate::debug_log;
@@ -25,6 +23,8 @@ use crate::input::click::ClickTracker;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::platform::MenuBar;
 use crate::render::viewer::{CacheLimits, Viewer};
+
+use self::window::Window;
 
 pub fn run(path: Option<PathBuf>, prefetch: Option<usize>) -> Result<(), Box<dyn Error>> {
     let event_loop = crate::platform::event_loop_builder().build()?;
@@ -40,8 +40,7 @@ struct App {
     cache_limits: CacheLimits,
     proxy: EventLoopProxy<UserEvent>,
     viewer: Option<Viewer>,
-    window: Option<Arc<Window>>,
-    surface: Option<softbuffer::Surface<Arc<Window>, Arc<Window>>>,
+    window: Option<Window>,
     scroll: f32,
     last_frame: Vec<u32>,
     modifiers: ModifiersState,
@@ -102,7 +101,6 @@ impl App {
             proxy,
             viewer: None,
             window: None,
-            surface: None,
             scroll: 0.0,
             last_frame: Vec::new(),
             modifiers: ModifiersState::empty(),
@@ -155,7 +153,7 @@ impl App {
             "MangaNia - drop a ZIP file".to_string()
         };
         debug_log::log(format_args!("title: {title}"));
-        window.set_title(&title);
+        window.winit().set_title(&title);
     }
 
     fn request_redraw(&self) {
@@ -181,24 +179,8 @@ impl ApplicationHandler<UserEvent> for App {
             return;
         }
 
-        let setup = || -> Result<_, String> {
-            let attributes = Window::default_attributes()
-                .with_title("MangaNia")
-                .with_inner_size(LogicalSize::new(1200.0, 900.0));
-            #[cfg(target_os = "windows")]
-            let attributes = window_icon::apply(attributes);
-            let window = event_loop
-                .create_window(attributes)
-                .map_err(|error| format!("create window: {error}"))?;
-            let window = Arc::new(window);
-            let context = softbuffer::Context::new(window.clone())
-                .map_err(|error| format!("create display context: {error}"))?;
-            let surface = softbuffer::Surface::new(&context, window.clone())
-                .map_err(|error| format!("create surface: {error}"))?;
-            Ok((window, surface))
-        };
-        let (window, surface) = match setup() {
-            Ok(setup) => setup,
+        let window = match Window::new(event_loop) {
+            Ok(window) => window,
             Err(error) => {
                 eprintln!("mangania: {error}");
                 event_loop.exit();
@@ -213,12 +195,11 @@ impl ApplicationHandler<UserEvent> for App {
                 self.config.scale_filter,
                 self.proxy.clone(),
             );
-            menu.attach(&window);
+            menu.attach(window.winit());
             self.menu = Some(menu);
         }
 
         self.window = Some(window);
-        self.surface = Some(surface);
 
         if let Some(path) = self.initial_path.take() {
             self.open(&path);
@@ -265,7 +246,7 @@ impl ApplicationHandler<UserEvent> for App {
             }
             WindowEvent::DroppedFile(path) => {
                 if let Some(window) = &self.window {
-                    window.focus_window();
+                    window.winit().focus_window();
                 }
                 self.open(&path);
                 self.request_redraw();

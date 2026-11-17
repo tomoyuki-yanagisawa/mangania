@@ -64,7 +64,7 @@ impl App {
         if !self
             .window
             .as_ref()
-            .is_some_and(|window| window.has_focus())
+            .is_some_and(|window| window.winit().has_focus())
         {
             debug_log::log(format_args!("click: ignored while the window is inactive"));
             self.clicks.cancel();
@@ -163,7 +163,7 @@ impl App {
     pub(super) fn is_fullscreen(&self) -> bool {
         self.window
             .as_ref()
-            .and_then(|window| window.fullscreen())
+            .and_then(|window| window.winit().fullscreen())
             .is_some()
     }
 }
