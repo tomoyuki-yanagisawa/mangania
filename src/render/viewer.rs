@@ -65,15 +65,40 @@ pub(crate) enum Frame {
     RightOnly(Arc<RgbaImage>),
 }
 
-impl Frame {
+/// What the screen shows, without the images themselves.
+///
+/// Used to tell whether a decoded page changes the display. Prefetched pages
+/// do not, so they must not trigger another full redraw.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FrameKind {
+    Loading,
+    Failed,
+    Single,
+    Spread,
+    RightOnly,
+}
+
+impl FrameKind {
     /// Short name for the draw debug log.
-    pub(crate) fn kind(&self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Loading => "waiting",
             Self::Failed => "failed",
-            Self::Single(_) => "single",
-            Self::Spread { .. } => "spread",
-            Self::RightOnly(_) => "right-only",
+            Self::Single => "single",
+            Self::Spread => "spread",
+            Self::RightOnly => "right-only",
+        }
+    }
+}
+
+impl Frame {
+    pub(crate) fn kind(&self) -> FrameKind {
+        match self {
+            Self::Loading => FrameKind::Loading,
+            Self::Failed => FrameKind::Failed,
+            Self::Single(_) => FrameKind::Single,
+            Self::Spread { .. } => FrameKind::Spread,
+            Self::RightOnly(_) => FrameKind::RightOnly,
         }
     }
 }
