@@ -2,6 +2,8 @@ mod draw;
 mod input;
 mod open;
 mod window;
+#[cfg(target_os = "windows")]
+mod window_icon;
 
 use std::error::Error;
 use std::path::PathBuf;
@@ -180,12 +182,13 @@ impl ApplicationHandler<UserEvent> for App {
         }
 
         let setup = || -> Result<_, String> {
+            let attributes = Window::default_attributes()
+                .with_title("MangaNia")
+                .with_inner_size(LogicalSize::new(1200.0, 900.0));
+            #[cfg(target_os = "windows")]
+            let attributes = window_icon::apply(attributes);
             let window = event_loop
-                .create_window(
-                    Window::default_attributes()
-                        .with_title("MangaNia")
-                        .with_inner_size(LogicalSize::new(1200.0, 900.0)),
-                )
+                .create_window(attributes)
                 .map_err(|error| format!("create window: {error}"))?;
             let window = Arc::new(window);
             let context = softbuffer::Context::new(window.clone())
