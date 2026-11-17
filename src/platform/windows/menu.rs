@@ -3,6 +3,8 @@ use std::cell::Cell;
 use muda::Menu;
 use winit::window::Window;
 
+use super::hwnd_of;
+
 /// Win32 state for the native menu bar attached to a window.
 #[derive(Default)]
 pub(crate) struct NativeMenu {
@@ -60,16 +62,5 @@ impl NativeMenu {
                 DrawMenuBar(hwnd);
             }
         }
-    }
-}
-
-/// Returns the `HWND` behind a live winit window.
-fn hwnd_of(window: &Window) -> Option<isize> {
-    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
-
-    let handle = window.window_handle().ok()?;
-    match handle.as_raw() {
-        RawWindowHandle::Win32(handle) => Some(handle.hwnd.get()),
-        _ => None,
     }
 }

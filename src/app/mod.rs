@@ -187,6 +187,8 @@ impl ApplicationHandler<UserEvent> for App {
                         .with_inner_size(LogicalSize::new(1200.0, 900.0)),
                 )
                 .map_err(|error| format!("create window: {error}"))?;
+            #[cfg(target_os = "windows")]
+            crate::platform::windows::activation::install(&window);
             let window = Arc::new(window);
             let context = softbuffer::Context::new(window.clone())
                 .map_err(|error| format!("create display context: {error}"))?;
