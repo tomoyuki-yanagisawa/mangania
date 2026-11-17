@@ -4,7 +4,7 @@ use image::RgbaImage;
 
 use crate::debug_log;
 use crate::render::view;
-use crate::render::viewer::{FrameState, Viewport, Visible, frame_state};
+use crate::render::viewer::{Frame, Viewport};
 
 use super::App;
 
@@ -58,11 +58,11 @@ impl App {
             return;
         };
 
-        let visible = self
+        let frame = self
             .viewer
             .as_ref()
-            .map(|viewer| viewer.visible_pages())
-            .unwrap_or(Visible::Waiting);
+            .map(|viewer| viewer.frame())
+            .unwrap_or(Frame::Loading);
         let page = self
             .viewer
             .as_ref()
@@ -77,52 +77,53 @@ impl App {
             width,
             height,
             page,
-            visible.kind(),
+            frame.kind(),
             cached
         ));
 
-        let current_failed = self
-            .viewer
-            .as_ref()
-            .is_some_and(|viewer| viewer.errors.contains_key(&viewer.current));
-        let waiting = matches!(visible, Visible::Waiting);
-        let state = frame_state(!waiting, current_failed, waiting);
-        if state == FrameState::Failed {
-            view::blank(&mut buffer);
-            self.last_frame.clear();
-        } else if state == FrameState::Loading {
-            debug_log::log(format_args!(
-                "draw: hold last frame ({} bytes)",
-                self.last_frame.len()
-            ));
-            if self.last_frame.len() == buffer.len() {
-                buffer.copy_from_slice(&self.last_frame);
-            } else {
+        match frame {
+            Frame::Failed => {
                 view::blank(&mut buffer);
+                self.last_frame.clear();
             }
-        } else {
-            let start = std::time::Instant::now();
-            let cells: Vec<Option<&RgbaImage>> = match &visible {
-                Visible::Waiting => Vec::new(),
-                Visible::Single(image) => vec![Some(image.as_ref())],
-                Visible::Spread { left, right } => {
-                    vec![Some(left.as_ref()), Some(right.as_ref())]
+            Frame::Loading => {
+                debug_log::log(format_args!(
+                    "draw: hold last frame ({} bytes)",
+                    self.last_frame.len()
+                ));
+                if self.last_frame.len() == buffer.len() {
+                    buffer.copy_from_slice(&self.last_frame);
+                } else {
+                    view::blank(&mut buffer);
                 }
-                Visible::RightOnly(right) => vec![None, Some(right.as_ref())],
-            };
-            view::render_pages(
-                &mut buffer,
-                size.width as usize,
-                size.height as usize,
-                &cells,
-            );
-
-            self.last_frame.resize(buffer.len(), 0);
-            self.last_frame.copy_from_slice(&buffer);
-            debug_log::log(format_args!(
-                "draw: rendered in {:.1}ms",
-                start.elapsed().as_secs_f64() * 1000.0
-            ));
+            }
+            Frame::Single(image) => {
+                draw_cells(
+                    &mut buffer,
+                    &mut self.last_frame,
+                    size.width,
+                    size.height,
+                    &[Some(image.as_ref())],
+                );
+            }
+            Frame::Spread { left, right } => {
+                draw_cells(
+                    &mut buffer,
+                    &mut self.last_frame,
+                    size.width,
+                    size.height,
+                    &[Some(left.as_ref()), Some(right.as_ref())],
+                );
+            }
+            Frame::RightOnly(right) => {
+                draw_cells(
+                    &mut buffer,
+                    &mut self.last_frame,
+                    size.width,
+                    size.height,
+                    &[None, Some(right.as_ref())],
+                );
+            }
         }
         if let Err(error) = buffer.present() {
             debug_log::log(format_args!("surface present failed: {error}"));
@@ -161,4 +162,23 @@ impl App {
 
         self.refresh();
     }
+}
+
+/// Draws the page cells and keeps the result to hold while loading.
+fn draw_cells(
+    buffer: &mut [u32],
+    last_frame: &mut Vec<u32>,
+    width: u32,
+    height: u32,
+    cells: &[Option<&RgbaImage>],
+) {
+    let start = std::time::Instant::now();
+    view::render_pages(buffer, width as usize, height as usize, cells);
+
+    last_frame.resize(buffer.len(), 0);
+    last_frame.copy_from_slice(buffer);
+    debug_log::log(format_args!(
+        "draw: rendered in {:.1}ms",
+        start.elapsed().as_secs_f64() * 1000.0
+    ));
 }

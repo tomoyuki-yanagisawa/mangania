@@ -36,27 +36,6 @@ impl Viewport {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum FrameState {
-    Failed,
-    Loading,
-    Ready,
-}
-
-pub(crate) fn frame_state(
-    current: bool,
-    current_failed: bool,
-    waiting_for_next: bool,
-) -> FrameState {
-    if current_failed {
-        FrameState::Failed
-    } else if !current || waiting_for_next {
-        FrameState::Loading
-    } else {
-        FrameState::Ready
-    }
-}
-
 /// Memory cache limits. Whichever is reached first evicts entries.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CacheLimits {
@@ -64,14 +43,17 @@ pub(crate) struct CacheLimits {
     pub(crate) bytes: usize,
 }
 
-/// Page images to draw for the current position.
+/// The frame to draw for the current position.
 ///
 /// The variants make an accidental blank left cell impossible: a spread is
 /// only drawn with both images, and a blank left cell is drawn only when it is
 /// intentional.
-pub(crate) enum Visible {
-    /// A page needed for the display is still loading.
-    Waiting,
+pub(crate) enum Frame {
+    /// A page needed for the display is still loading. The previous frame is
+    /// kept on screen.
+    Loading,
+    /// The current page failed to decode or fit. The frame is blank.
+    Failed,
     /// One page fills the window.
     Single(Arc<RgbaImage>),
     /// Both cells of a spread are ready.
@@ -83,11 +65,12 @@ pub(crate) enum Visible {
     RightOnly(Arc<RgbaImage>),
 }
 
-impl Visible {
+impl Frame {
     /// Short name for the draw debug log.
     pub(crate) fn kind(&self) -> &'static str {
         match self {
-            Self::Waiting => "waiting",
+            Self::Loading => "waiting",
+            Self::Failed => "failed",
             Self::Single(_) => "single",
             Self::Spread { .. } => "spread",
             Self::RightOnly(_) => "right-only",
@@ -119,15 +102,6 @@ enum Layout {
     BlankLeft,
     /// Two cells with the next page on the left and the current page on the right.
     Spread,
-}
-
-/// Display chosen for a layout after checking the cache and errors.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Display {
-    Waiting,
-    Single,
-    Spread,
-    RightOnly,
 }
 
 pub(crate) struct Viewer {
@@ -369,62 +343,59 @@ impl Viewer {
 
     /// True while the current display is waiting for a page image.
     pub(crate) fn is_loading(&self) -> bool {
-        matches!(self.visible_pages(), Visible::Waiting)
+        matches!(self.frame(), Frame::Loading)
     }
 
-    /// Returns the images to draw. A spread stays `Waiting` until both pages
+    /// Returns the frame to draw. A spread stays `Loading` until both pages
     /// are cached, so the previous frame remains on screen instead of showing
     /// a right-only frame that gains a left page a moment later.
-    pub(crate) fn visible_pages(&self) -> Visible {
-        let Some(current) = self.cache.get(self.current) else {
-            return Visible::Waiting;
+    pub(crate) fn frame(&self) -> Frame {
+        if self.errors.contains_key(&self.current) {
+            return Frame::Failed;
+        }
+        let Some(right) = self.cache.get(self.current) else {
+            return Frame::Loading;
         };
         let next = self.current + 1;
         let has_next = next < self.pages.len();
-        let left = self.cache.get(next);
-        let next_known = !has_next || self.orientation(next).is_some();
-        let next_failed = self.errors.contains_key(&next);
-        match display(self.layout(), left.is_some(), next_known, next_failed) {
-            Display::Waiting => Visible::Waiting,
-            Display::Single => Visible::Single(current),
-            Display::Spread => match left {
-                Some(left) => Visible::Spread {
-                    left,
-                    right: current,
-                },
-                None => Visible::Waiting,
-            },
-            Display::RightOnly => Visible::RightOnly(current),
-        }
+        frame_for(
+            self.layout(),
+            right,
+            self.cache.get(next),
+            !has_next || self.orientation(next).is_some(),
+            self.errors.contains_key(&next),
+        )
     }
 }
 
-/// Chooses what to draw for `layout` once the current page is cached.
+/// Chooses the frame for `layout` once the current page image `right` is
+/// cached.
 ///
-/// `left_ready` says whether the left image is cached, `next_known` whether no
-/// next page remains or its orientation is known, and `next_failed` whether the
-/// next page failed to decode or to fit. A failed page ends the wait; a
-/// rejected prefetch does not, because the page is requested again when it is
-/// visible.
-fn display(layout: Layout, left_ready: bool, next_known: bool, next_failed: bool) -> Display {
+/// `left` is the cached next page, `next_known` says whether no next page
+/// remains or its orientation is known, and `next_failed` says whether the next
+/// page failed to decode or to fit. A failed page ends the wait; a rejected
+/// prefetch does not, because the page is requested again when it is visible.
+fn frame_for(
+    layout: Layout,
+    right: Arc<RgbaImage>,
+    left: Option<Arc<RgbaImage>>,
+    next_known: bool,
+    next_failed: bool,
+) -> Frame {
     match layout {
-        Layout::Single => Display::Single,
-        Layout::Spread => {
-            if left_ready {
-                Display::Spread
-            } else if next_failed {
-                Display::RightOnly
-            } else {
-                Display::Waiting
-            }
-        }
+        Layout::Single => Frame::Single(right),
+        Layout::Spread => match left {
+            Some(left) => Frame::Spread { left, right },
+            None if next_failed => Frame::RightOnly(right),
+            None => Frame::Loading,
+        },
         Layout::BlankLeft => {
             if next_known || next_failed {
-                Display::RightOnly
+                Frame::RightOnly(right)
             } else {
                 // Mixed mode still has to learn whether the next page is
                 // portrait before the left cell can be left blank for good.
-                Display::Waiting
+                Frame::Loading
             }
         }
     }
@@ -525,8 +496,8 @@ mod tests {
     use image::RgbaImage;
 
     use super::{
-        CacheLimits, Display, FrameState, Layout, Orientation, Prefetch, Viewer, Viewport, Visible,
-        display, display_size, frame_state, layout, prefetch_targets, step_mixed,
+        CacheLimits, Frame, Layout, Orientation, Prefetch, Viewer, Viewport, display_size,
+        frame_for, layout, prefetch_targets, step_mixed,
     };
     use crate::archive::Page;
     use crate::config::{DisplayMode, ScaleFilter};
@@ -557,44 +528,66 @@ mod tests {
     }
 
     #[test]
-    fn failed_pages_do_not_keep_the_previous_frame() {
-        assert_eq!(frame_state(false, true, false), FrameState::Failed);
-        assert_eq!(frame_state(false, false, false), FrameState::Loading);
-        assert_eq!(frame_state(true, false, true), FrameState::Loading);
-        assert_eq!(frame_state(true, false, false), FrameState::Ready);
+    fn failed_page_draws_a_blank_frame() {
+        let mut viewer = test_viewer(DisplayMode::Single, 4);
+        assert!(matches!(viewer.frame(), Frame::Loading));
+
+        viewer.errors.insert(0, "failed".to_string());
+        assert!(matches!(viewer.frame(), Frame::Failed));
+        assert!(!viewer.is_loading());
     }
 
     #[test]
-    fn display_waits_until_both_spread_pages_are_ready() {
-        assert_eq!(
-            display(Layout::Spread, false, true, false),
-            Display::Waiting
-        );
-        assert_eq!(display(Layout::Spread, true, true, false), Display::Spread);
-        assert_eq!(
-            display(Layout::Spread, false, false, true),
-            Display::RightOnly
-        );
+    fn frame_waits_until_both_spread_pages_are_ready() {
+        let right = portrait();
+        let left = portrait();
+
+        assert!(matches!(
+            frame_for(Layout::Spread, right.clone(), None, true, false),
+            Frame::Loading
+        ));
+        match frame_for(
+            Layout::Spread,
+            right.clone(),
+            Some(left.clone()),
+            true,
+            false,
+        ) {
+            Frame::Spread {
+                left: drawn_left,
+                right: drawn_right,
+            } => {
+                assert!(Arc::ptr_eq(&drawn_left, &left));
+                assert!(Arc::ptr_eq(&drawn_right, &right));
+            }
+            _ => panic!("expected a spread"),
+        }
+        assert!(matches!(
+            frame_for(Layout::Spread, right.clone(), None, false, true),
+            Frame::RightOnly(image) if Arc::ptr_eq(&image, &right)
+        ));
     }
 
     #[test]
-    fn display_waits_for_an_unknown_mixed_neighbour() {
-        assert_eq!(
-            display(Layout::BlankLeft, false, false, false),
-            Display::Waiting
-        );
-        assert_eq!(
-            display(Layout::BlankLeft, false, true, false),
-            Display::RightOnly
-        );
-        assert_eq!(
-            display(Layout::BlankLeft, false, false, true),
-            Display::RightOnly
-        );
-        assert_eq!(
-            display(Layout::Single, false, false, false),
-            Display::Single
-        );
+    fn frame_waits_for_an_unknown_mixed_neighbour() {
+        let right = portrait();
+
+        assert!(matches!(
+            frame_for(Layout::BlankLeft, right.clone(), None, false, false),
+            Frame::Loading
+        ));
+        assert!(matches!(
+            frame_for(Layout::BlankLeft, right.clone(), None, true, false),
+            Frame::RightOnly(_)
+        ));
+        assert!(matches!(
+            frame_for(Layout::BlankLeft, right.clone(), None, false, true),
+            Frame::RightOnly(_)
+        ));
+        assert!(matches!(
+            frame_for(Layout::Single, right, None, false, false),
+            Frame::Single(_)
+        ));
     }
 
     #[test]
@@ -615,10 +608,10 @@ mod tests {
         viewer.insert_decoded(0, portrait());
         viewer.rejected.insert(1);
 
-        assert!(matches!(viewer.visible_pages(), Visible::Waiting));
+        assert!(matches!(viewer.frame(), Frame::Loading));
 
         viewer.errors.insert(1, "failed".to_string());
-        assert!(matches!(viewer.visible_pages(), Visible::RightOnly(_)));
+        assert!(matches!(viewer.frame(), Frame::RightOnly(_)));
     }
 
     #[test]
@@ -636,7 +629,7 @@ mod tests {
         let mut viewer = test_viewer(DisplayMode::Spread, 1);
         viewer.insert_decoded(0, portrait());
 
-        assert!(matches!(viewer.visible_pages(), Visible::RightOnly(_)));
+        assert!(matches!(viewer.frame(), Frame::RightOnly(_)));
     }
 
     #[test]
