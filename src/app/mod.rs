@@ -73,8 +73,8 @@ impl App {
             }
         }
         debug_log::log(format_args!(
-            "config: spread={} prefetch={} cache_pages={} cache_mb={} scale_filter={} debug={}",
-            config.spread,
+            "config: mode={} prefetch={} cache_pages={} cache_mb={} scale_filter={} debug={}",
+            config.mode.as_str(),
             config.prefetch,
             config.cache_pages,
             config.cache_mb,
@@ -123,9 +123,8 @@ impl App {
             return;
         };
         let title = if let Some(viewer) = &self.viewer {
-            let start = viewer.current + 1;
-            let end = (viewer.current + 2).min(viewer.pages.len());
-            let pages = if self.config.spread && end > start {
+            let (start, end) = viewer.page_range();
+            let pages = if end > start {
                 format!("{start}-{end}/{}", viewer.pages.len())
             } else {
                 format!("{start}/{}", viewer.pages.len())
@@ -207,7 +206,7 @@ impl ApplicationHandler<UserEvent> for App {
         #[cfg(any(target_os = "windows", target_os = "macos"))]
         if self.menu.is_none() {
             let menu = MenuBar::new(
-                self.config.spread,
+                self.config.mode,
                 self.config.scale_filter,
                 self.proxy.clone(),
             );

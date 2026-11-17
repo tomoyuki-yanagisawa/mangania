@@ -5,7 +5,7 @@ use winit::window::Window;
 #[cfg(target_os = "windows")]
 use crate::platform::windows::menu::NativeMenu;
 
-use crate::config::ScaleFilter;
+use crate::config::{DisplayMode, ScaleFilter};
 use crate::event::UserEvent;
 use crate::input::bindings::Action;
 
@@ -18,6 +18,7 @@ pub struct MenuBar {
     pub last: MenuItem,
     pub single: CheckMenuItem,
     pub spread: CheckMenuItem,
+    pub mixed: CheckMenuItem,
     pub fullscreen: CheckMenuItem,
     filters: Vec<(ScaleFilter, CheckMenuItem)>,
     menu: Menu,
@@ -29,7 +30,7 @@ pub struct MenuBar {
 
 impl MenuBar {
     pub fn new(
-        spread: bool,
+        mode: DisplayMode,
         current_filter: ScaleFilter,
         proxy: EventLoopProxy<UserEvent>,
     ) -> Self {
@@ -59,10 +60,27 @@ impl MenuBar {
         let _ = menu.append(&navigation);
 
         let view = Submenu::new("表示", true);
-        let single = CheckMenuItem::new("1ページ表示", true, !spread, None);
-        let spread_item = CheckMenuItem::new("見開き表示", true, spread, None);
+        let single = CheckMenuItem::new(
+            DisplayMode::Single.label(),
+            true,
+            mode == DisplayMode::Single,
+            None,
+        );
+        let spread_item = CheckMenuItem::new(
+            DisplayMode::Spread.label(),
+            true,
+            mode == DisplayMode::Spread,
+            None,
+        );
+        let mixed = CheckMenuItem::new(
+            DisplayMode::Mixed.label(),
+            true,
+            mode == DisplayMode::Mixed,
+            None,
+        );
         let _ = view.append(&single);
         let _ = view.append(&spread_item);
+        let _ = view.append(&mixed);
         let _ = view.append(&PredefinedMenuItem::separator());
         let fullscreen = CheckMenuItem::new("全画面表示", true, false, None);
         let _ = view.append(&fullscreen);
@@ -95,6 +113,7 @@ impl MenuBar {
             last,
             single,
             spread: spread_item,
+            mixed,
             fullscreen,
             filters,
             menu,
@@ -118,6 +137,8 @@ impl MenuBar {
             Some(Action::SinglePage)
         } else if id == self.spread.id() {
             Some(Action::SpreadPage)
+        } else if id == self.mixed.id() {
+            Some(Action::MixedPage)
         } else if id == self.fullscreen.id() {
             Some(Action::ToggleFullscreen)
         } else {
@@ -134,6 +155,12 @@ impl MenuBar {
             .iter()
             .find(|(_, item)| item.id() == id)
             .map(|(filter, _)| *filter)
+    }
+
+    pub fn set_mode_checked(&self, mode: DisplayMode) {
+        self.single.set_checked(mode == DisplayMode::Single);
+        self.spread.set_checked(mode == DisplayMode::Spread);
+        self.mixed.set_checked(mode == DisplayMode::Mixed);
     }
 
     pub fn set_filter_checked(&self, current: ScaleFilter) {

@@ -25,13 +25,14 @@ pub enum Action {
     ToggleSpread,
     SinglePage,
     SpreadPage,
+    MixedPage,
     ToggleFullscreen,
     SavePage,
     Quit,
 }
 
 impl Action {
-    const ALL: [Action; 12] = [
+    const ALL: [Action; 13] = [
         Action::Next,
         Action::Prev,
         Action::NextSingle,
@@ -41,6 +42,7 @@ impl Action {
         Action::ToggleSpread,
         Action::SinglePage,
         Action::SpreadPage,
+        Action::MixedPage,
         Action::ToggleFullscreen,
         Action::SavePage,
         Action::Quit,
@@ -57,6 +59,7 @@ impl Action {
             Action::ToggleSpread => "toggle_spread",
             Action::SinglePage => "single_page",
             Action::SpreadPage => "spread_page",
+            Action::MixedPage => "mixed_page",
             Action::ToggleFullscreen => "toggle_fullscreen",
             Action::SavePage => "save_page",
             Action::Quit => "quit",
@@ -151,6 +154,7 @@ mod tests {
                 "toggle_spread",
                 "single_page",
                 "spread_page",
+                "mixed_page",
                 "toggle_fullscreen",
                 "save_page",
                 "quit",
