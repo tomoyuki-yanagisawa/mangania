@@ -20,6 +20,7 @@ use crate::config::{DisplayMode, ScaleFilter};
 use crate::debug_log;
 use crate::event::UserEvent;
 use crate::input::bindings::Action;
+use crate::platform::menu::{NAVIGATION_ITEMS, labels};
 use crate::platform::{MenuCommand, MenuState, action_for_mode};
 
 const SUBCLASS_ID: usize = 1;
@@ -47,20 +48,19 @@ impl MenuBar {
         let app = outlined(unsafe { CreatePopupMenu() });
 
         // The application menu keeps the existing quit entry on Windows.
-        append_item(app, MenuCommand::ExitApplication, "終了");
+        append_item(app, MenuCommand::ExitApplication, labels::QUIT);
 
         append_item(
             file,
             MenuCommand::Action(Action::SavePage),
-            "表示中のページを保存",
+            labels::SAVE_PAGE,
         );
         append_separator(file);
-        append_item(file, MenuCommand::ClearDiskCache, "キャッシュを削除");
+        append_item(file, MenuCommand::ClearDiskCache, labels::CLEAR_CACHE);
 
-        append_item(navigation, MenuCommand::Action(Action::Next), "次のページ");
-        append_item(navigation, MenuCommand::Action(Action::Prev), "前のページ");
-        append_item(navigation, MenuCommand::Action(Action::First), "先頭へ");
-        append_item(navigation, MenuCommand::Action(Action::Last), "末尾へ");
+        for (label, action) in NAVIGATION_ITEMS {
+            append_item(navigation, MenuCommand::Action(action), label);
+        }
 
         for display_mode in [DisplayMode::Single, DisplayMode::Spread, DisplayMode::Mixed] {
             let checked = display_mode == mode;
@@ -75,7 +75,7 @@ impl MenuBar {
         append_item(
             view,
             MenuCommand::Action(Action::ToggleFullscreen),
-            "全画面表示",
+            labels::FULLSCREEN,
         );
 
         for filter in ScaleFilter::ALL {
@@ -86,12 +86,12 @@ impl MenuBar {
                 filter == current_filter,
             );
         }
-        append_submenu(view, filters, "縮小フィルタ");
+        append_submenu(view, filters, labels::FILTERS);
 
         append_submenu(menu, app, "MangaNia");
-        append_submenu(menu, file, "ファイル");
-        append_submenu(menu, navigation, "移動");
-        append_submenu(menu, view, "表示");
+        append_submenu(menu, file, labels::FILE);
+        append_submenu(menu, navigation, labels::NAVIGATION);
+        append_submenu(menu, view, labels::VIEW);
 
         Self {
             menu,
