@@ -36,7 +36,7 @@ cargo run --release -- --check path/to/book.zip
 cargo run --release -- --render-page 1 out.png path/to/book.zip
 ```
 
-Windows の exe は GUI サブシステムでビルドしているため、ダブルクリックではコンソールウィンドウが開きません。`--list` などの CLI モードでは親コンソールに接続し、標準出力のリダイレクトも維持します。
+Windows の exe は GUI サブシステムでビルドしているため、ダブルクリックではコンソールウィンドウが開きません。`--list` などの CLI モードでは親コンソールに接続し、標準出力のリダイレクトも維持します。ウィンドウのタイトルバーとタスクバーには、`assets/icon.svg` からビルド時に生成したアプリアイコンを表示します（Windows のみ）。
 
 | 操作 | キー・マウス |
 | --- | --- |
@@ -298,7 +298,8 @@ src/
 │   ├── draw.rs  # 描画、ビューポート、画像受信
 │   ├── input.rs # ナビゲーション、クリック、キー
 │   ├── open.rs  # アーカイブを開く、ページ保存
-│   └── window.rs # 全画面、メニュー、縮小フィルタ操作
+│   ├── window.rs # 全画面、メニュー、縮小フィルタ操作
+│   └── window_icon.rs # タイトルバー / タスクバーのアイコン（Windows、build.rs 生成）
 ├── archive/
 │   ├── mod.rs   # ZIP 索引・自然順・読み出し、エントリのストリーム展開
 │   ├── open.rs  # 形式判定・エントリ
