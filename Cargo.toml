@@ -12,11 +12,13 @@ toml = "1.2.1"
 winit = "0.30.12"
 zip = { version = "9.5.1", default-features = false, features = ["deflate"] }
 
-[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
-muda = "0.21.2"
-
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.52.0", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Console", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.52.0", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Console", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.5"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSCell", "NSApplication", "NSMenu", "NSMenuItem", "NSResponder"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSGeometry", "NSObject", "NSString"] }
 
 [target.'cfg(not(windows))'.dependencies]
 dirs = "7.0.0"

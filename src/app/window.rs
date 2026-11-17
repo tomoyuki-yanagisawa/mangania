@@ -9,6 +9,8 @@ use crate::config::ScaleFilter;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::debug_log;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
+use crate::platform::{MenuCommand, MenuState};
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::storage::disk_cache::DiskCache;
 
 use super::App;
@@ -20,9 +22,7 @@ impl App {
         self.config.save();
         self.status = None;
         #[cfg(any(target_os = "windows", target_os = "macos"))]
-        if let Some(menu) = &self.menu {
-            menu.set_mode_checked(mode);
-        }
+        self.sync_menu();
 
         if let Some(viewer) = self.viewer.as_mut() {
             if mode == DisplayMode::Spread {
@@ -41,9 +41,7 @@ impl App {
         self.config.scale_filter = filter;
         self.config.save();
         self.sync_viewport();
-        if let Some(menu) = &self.menu {
-            menu.set_filter_checked(filter);
-        }
+        self.sync_menu();
         self.refresh();
     }
 
@@ -58,7 +56,7 @@ impl App {
             // fullscreen, so detach it while fullscreen and restore it after.
             #[cfg(target_os = "windows")]
             if let Some(menu) = &self.menu {
-                menu.set_native_menu_visible(window, !fullscreen);
+                menu.set_visible(!fullscreen);
             }
             window.set_cursor_visible(!fullscreen);
             window.request_redraw();
@@ -68,8 +66,23 @@ impl App {
 
     pub(super) fn update_fullscreen_menu(&self, _fullscreen: bool) {
         #[cfg(any(target_os = "windows", target_os = "macos"))]
+        self.sync_menu_with(_fullscreen);
+    }
+
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    fn sync_menu(&self) {
+        let fullscreen = self.is_fullscreen();
+        self.sync_menu_with(fullscreen);
+    }
+
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    fn sync_menu_with(&self, fullscreen: bool) {
         if let Some(menu) = &self.menu {
-            menu.fullscreen.set_checked(_fullscreen);
+            menu.sync_state(MenuState {
+                mode: self.config.mode,
+                filter: self.config.scale_filter,
+                fullscreen,
+            });
         }
     }
 
@@ -92,30 +105,12 @@ impl App {
     }
 
     #[cfg(any(target_os = "windows", target_os = "macos"))]
-    pub(super) fn handle_menu(&mut self, event: muda::MenuEvent, event_loop: &ActiveEventLoop) {
-        let filter = self
-            .menu
-            .as_ref()
-            .and_then(|menu| menu.filter_for(&event.id));
-        if let Some(filter) = filter {
-            self.set_scale_filter(filter);
-            return;
-        }
-        if self
-            .menu
-            .as_ref()
-            .is_some_and(|menu| menu.is_clear_cache(&event.id))
-        {
-            self.clear_disk_cache();
-            return;
-        }
-
-        let action = self
-            .menu
-            .as_ref()
-            .and_then(|menu| menu.action_for(&event.id));
-        if let Some(action) = action {
-            self.perform(action, event_loop);
+    pub(super) fn handle_menu(&mut self, command: MenuCommand, event_loop: &ActiveEventLoop) {
+        match command {
+            MenuCommand::Action(action) => self.perform(action, event_loop),
+            MenuCommand::SetScaleFilter(filter) => self.set_scale_filter(filter),
+            MenuCommand::ClearDiskCache => self.clear_disk_cache(),
+            MenuCommand::ExitApplication => event_loop.exit(),
         }
     }
 }

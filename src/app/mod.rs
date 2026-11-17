@@ -20,12 +20,19 @@ use crate::debug_log;
 use crate::event::UserEvent;
 use crate::input::bindings::{KeyBindings, MouseBindings};
 use crate::input::click::ClickTracker;
-use crate::render::viewer::{CacheLimits, Viewer};
 #[cfg(any(target_os = "windows", target_os = "macos"))]
-use crate::ui::menu::MenuBar;
+use crate::platform::MenuBar;
+use crate::render::viewer::{CacheLimits, Viewer};
 
 pub fn run(path: Option<PathBuf>, prefetch: Option<usize>) -> Result<(), Box<dyn Error>> {
-    let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
+    let mut event_loop = EventLoop::<UserEvent>::with_user_event();
+    // macOS: the app installs its own system menu bar after the window exists.
+    #[cfg(target_os = "macos")]
+    {
+        use winit::platform::macos::EventLoopBuilderExtMacOS;
+        event_loop.with_default_menu(false);
+    }
+    let event_loop = event_loop.build()?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let proxy = event_loop.create_proxy();
     event_loop.run_app(&mut App::new(path, prefetch, proxy))?;
@@ -187,8 +194,6 @@ impl ApplicationHandler<UserEvent> for App {
                         .with_inner_size(LogicalSize::new(1200.0, 900.0)),
                 )
                 .map_err(|error| format!("create window: {error}"))?;
-            #[cfg(target_os = "windows")]
-            crate::platform::windows::activation::install(&window);
             let window = Arc::new(window);
             let context = softbuffer::Context::new(window.clone())
                 .map_err(|error| format!("create display context: {error}"))?;

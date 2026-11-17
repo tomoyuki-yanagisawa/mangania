@@ -10,4 +10,3 @@ pub mod input;
 pub(crate) mod platform;
 pub mod render;
 pub mod storage;
-pub(crate) mod ui;

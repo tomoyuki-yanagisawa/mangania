@@ -1,8 +1,19 @@
-#[cfg(not(windows))]
-use std::path::{Path, PathBuf};
-
+#[cfg(target_os = "macos")]
+pub(crate) mod macos;
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+pub(crate) mod menu;
 #[cfg(windows)]
 pub(crate) mod windows;
+
+#[cfg(target_os = "macos")]
+pub(crate) use macos::menu::MenuBar;
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+pub(crate) use menu::{MenuCommand, MenuState};
+#[cfg(windows)]
+pub(crate) use windows::menu::MenuBar;
+
+#[cfg(not(windows))]
+use std::path::{Path, PathBuf};
 
 /// Resolves a Windows shortcut to the path it points to.
 #[cfg(windows)]

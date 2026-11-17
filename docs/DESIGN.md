@@ -44,8 +44,9 @@ ZIP 内の漫画画像を高速に読むための、小さなネイティブビ�
 | `input/navigation.rs` | ページ移動の純粋関数 |
 | `input/bindings/` | アクション定義、キー・マウス割り当ての TOML 読み書き |
 | `storage/disk_cache.rs` | 展開済み ZIP エントリのディスクキャッシュ（キー、原子書き込み、手動削除） |
-| `ui/menu.rs` | Windows / macOS のネイティブメニュー（共通レイアウト） |
-| `platform/windows/` | Windows 固有の Win32 / COM 処理（アクティブ化クリックの破棄、メニュー、ショートカット） |
+| `platform/menu.rs` | OS 非依存のメニューコマンドとチェック状態 |
+| `platform/windows/` | Windows 固有の Win32 / COM 処理（メニューバー、アクティブ化クリックの破棄、ショートカット） |
+| `platform/macos/` | macOS 固有の AppKit 処理（システムメニューバー） |
 | `config.rs` | 一般設定の TOML 読み書き |
 | `export.rs` | 表示中ページの保存、ファイル名テンプレート |
 | `headless.rs` | GUI なしの `--list` / `--check` / `--render-page` |
