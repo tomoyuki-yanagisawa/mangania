@@ -23,7 +23,7 @@ fn prefetches_without_a_winit_event_loop() {
 
     // The GUI moves the page list into the viewer; prefetching must not depend
     // on the archive retaining it.
-    prefetch.request(0, page.entry, page.name, true);
+    prefetch.request_batch(vec![(0, page.entry, page.name)]);
 
     let deadline = Instant::now() + Duration::from_secs(5);
     let (page, result) = loop {

@@ -4,7 +4,7 @@ use std::hash::{Hash, Hasher};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 use image::RgbaImage;
 
@@ -209,6 +209,7 @@ impl DiskCache {
     }
 }
 
+#[derive(Hash)]
 struct CacheKey<'a> {
     archive_path: &'a Path,
     archive_size: u64,
@@ -221,16 +222,7 @@ struct CacheKey<'a> {
 impl CacheKey<'_> {
     fn filename(&self) -> String {
         let mut hash = DefaultHasher::new();
-        self.archive_path.hash(&mut hash);
-        self.archive_size.hash(&mut hash);
-        self.archive_modified
-            .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
-            .map(|duration| (duration.as_secs(), duration.subsec_nanos()))
-            .hash(&mut hash);
-        self.entry.hash(&mut hash);
-        self.entry_name.hash(&mut hash);
-        self.info.size.hash(&mut hash);
-        self.info.crc32.hash(&mut hash);
+        self.hash(&mut hash);
         format!("{:016x}.{}", hash.finish(), extension(self.entry_name))
     }
 }
