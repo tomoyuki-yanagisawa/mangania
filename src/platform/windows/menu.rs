@@ -20,7 +20,7 @@ use crate::config::{DisplayMode, ScaleFilter};
 use crate::debug_log;
 use crate::event::UserEvent;
 use crate::input::bindings::Action;
-use crate::platform::{MenuCommand, MenuState};
+use crate::platform::{MenuCommand, MenuState, action_for_mode};
 
 const SUBCLASS_ID: usize = 1;
 
@@ -165,14 +165,6 @@ impl MenuBar {
             SetMenu(hwnd, if fullscreen { 0 } else { self.menu });
             DrawMenuBar(hwnd);
         }
-    }
-}
-
-fn action_for_mode(mode: DisplayMode) -> Action {
-    match mode {
-        DisplayMode::Single => Action::SinglePage,
-        DisplayMode::Spread => Action::SpreadPage,
-        DisplayMode::Mixed => Action::MixedPage,
     }
 }
 

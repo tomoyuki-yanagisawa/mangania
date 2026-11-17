@@ -32,7 +32,7 @@ pub enum Action {
 }
 
 impl Action {
-    const ALL: [Action; 13] = [
+    pub(crate) const ALL: [Action; 13] = [
         Action::Next,
         Action::Prev,
         Action::NextSingle,

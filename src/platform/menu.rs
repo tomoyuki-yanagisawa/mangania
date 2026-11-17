@@ -16,21 +16,12 @@ impl MenuCommand {
     /// Stable identifier shared by the Windows menu IDs and macOS item tags.
     pub(crate) fn id(self) -> u16 {
         match self {
-            MenuCommand::Action(action) => match action {
-                Action::Next => 1,
-                Action::Prev => 2,
-                Action::NextSingle => 3,
-                Action::PrevSingle => 4,
-                Action::First => 5,
-                Action::Last => 6,
-                Action::ToggleSpread => 7,
-                Action::SinglePage => 8,
-                Action::SpreadPage => 9,
-                Action::MixedPage => 10,
-                Action::ToggleFullscreen => 11,
-                Action::SavePage => 12,
-                Action::Quit => 13,
-            },
+            MenuCommand::Action(action) => {
+                1 + Action::ALL
+                    .iter()
+                    .position(|candidate| *candidate == action)
+                    .unwrap_or(0) as u16
+            }
             MenuCommand::SetScaleFilter(filter) => {
                 20 + ScaleFilter::ALL
                     .iter()
@@ -44,25 +35,22 @@ impl MenuCommand {
 
     pub(crate) fn from_id(id: u16) -> Option<Self> {
         let command = match id {
-            1 => MenuCommand::Action(Action::Next),
-            2 => MenuCommand::Action(Action::Prev),
-            3 => MenuCommand::Action(Action::NextSingle),
-            4 => MenuCommand::Action(Action::PrevSingle),
-            5 => MenuCommand::Action(Action::First),
-            6 => MenuCommand::Action(Action::Last),
-            7 => MenuCommand::Action(Action::ToggleSpread),
-            8 => MenuCommand::Action(Action::SinglePage),
-            9 => MenuCommand::Action(Action::SpreadPage),
-            10 => MenuCommand::Action(Action::MixedPage),
-            11 => MenuCommand::Action(Action::ToggleFullscreen),
-            12 => MenuCommand::Action(Action::SavePage),
-            13 => MenuCommand::Action(Action::Quit),
+            1..=13 => MenuCommand::Action(Action::ALL[(id - 1) as usize]),
             20..=26 => MenuCommand::SetScaleFilter(ScaleFilter::ALL[(id - 20) as usize]),
             40 => MenuCommand::ClearDiskCache,
             41 => MenuCommand::ExitApplication,
             _ => return None,
         };
         Some(command)
+    }
+}
+
+/// The action that switches to `mode`.
+pub(crate) fn action_for_mode(mode: DisplayMode) -> Action {
+    match mode {
+        DisplayMode::Single => Action::SinglePage,
+        DisplayMode::Spread => Action::SpreadPage,
+        DisplayMode::Mixed => Action::MixedPage,
     }
 }
 
@@ -94,5 +82,18 @@ mod tests {
         for command in commands {
             assert_eq!(MenuCommand::from_id(command.id()), Some(command));
         }
+    }
+
+    #[test]
+    fn ids_match_the_os_menu_ids() {
+        assert_eq!(MenuCommand::Action(Action::Next).id(), 1);
+        assert_eq!(MenuCommand::Action(Action::Quit).id(), 13);
+        assert_eq!(MenuCommand::SetScaleFilter(ScaleFilter::Nearest).id(), 20);
+        assert_eq!(MenuCommand::SetScaleFilter(ScaleFilter::Lanczos3).id(), 26);
+        assert_eq!(MenuCommand::ClearDiskCache.id(), 40);
+        assert_eq!(MenuCommand::ExitApplication.id(), 41);
+        assert_eq!(MenuCommand::from_id(14), None);
+        assert_eq!(MenuCommand::from_id(19), None);
+        assert_eq!(MenuCommand::from_id(42), None);
     }
 }

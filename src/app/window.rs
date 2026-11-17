@@ -61,27 +61,17 @@ impl App {
             window.set_cursor_visible(!fullscreen);
             window.request_redraw();
         }
-        self.update_fullscreen_menu(fullscreen);
-    }
-
-    pub(super) fn update_fullscreen_menu(&self, _fullscreen: bool) {
         #[cfg(any(target_os = "windows", target_os = "macos"))]
-        self.sync_menu_with(_fullscreen);
+        self.sync_menu();
     }
 
     #[cfg(any(target_os = "windows", target_os = "macos"))]
-    fn sync_menu(&self) {
-        let fullscreen = self.is_fullscreen();
-        self.sync_menu_with(fullscreen);
-    }
-
-    #[cfg(any(target_os = "windows", target_os = "macos"))]
-    fn sync_menu_with(&self, fullscreen: bool) {
+    pub(super) fn sync_menu(&self) {
         if let Some(menu) = &self.menu {
             menu.sync_state(MenuState {
                 mode: self.config.mode,
                 filter: self.config.scale_filter,
-                fullscreen,
+                fullscreen: self.is_fullscreen(),
             });
         }
     }
