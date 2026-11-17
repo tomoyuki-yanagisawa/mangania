@@ -10,12 +10,18 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{MainThreadMarker, NSObject, NSString, ns_string};
 
-use winit::event_loop::EventLoopProxy;
+use winit::event_loop::{EventLoopBuilder, EventLoopProxy};
+use winit::platform::macos::EventLoopBuilderExtMacOS;
 
 use crate::config::{DisplayMode, ScaleFilter};
 use crate::event::UserEvent;
 use crate::input::bindings::Action;
 use crate::platform::{MenuCommand, MenuState};
+
+/// Lets the app install its own system menu instead of winit's default menu.
+pub(crate) fn disable_default_menu(builder: &mut EventLoopBuilder<UserEvent>) {
+    builder.with_default_menu(false);
+}
 
 #[derive(Default)]
 struct MenuTargetIvars {
@@ -167,6 +173,9 @@ impl MenuBar {
             set_checked(item, *filter == state.filter);
         }
     }
+
+    /// macOS shows and hides the system menu bar itself in fullscreen.
+    pub(crate) fn set_fullscreen(&self, _fullscreen: bool) {}
 }
 
 fn submenu(mtm: MainThreadMarker, parent: &NSMenu, title: &str) -> Retained<NSMenu> {

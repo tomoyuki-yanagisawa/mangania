@@ -152,9 +152,9 @@ impl MenuBar {
         );
     }
 
-    /// Shows or hides the menu bar while keeping the same `HMENU`, including
-    /// its check states.
-    pub(crate) fn set_visible(&self, visible: bool) {
+    /// Windows keeps the menu bar visible in borderless fullscreen, so detach
+    /// it while fullscreen and restore the same `HMENU`, including check states.
+    pub(crate) fn set_fullscreen(&self, fullscreen: bool) {
         let hwnd = self.window.get();
         if hwnd == 0 {
             return;
@@ -162,7 +162,7 @@ impl MenuBar {
         // SAFETY: `hwnd` belongs to the live winit window and `menu` is owned
         // by `MenuBar`.
         unsafe {
-            SetMenu(hwnd, if visible { self.menu } else { 0 });
+            SetMenu(hwnd, if fullscreen { 0 } else { self.menu });
             DrawMenuBar(hwnd);
         }
     }

@@ -11,7 +11,7 @@ use std::time::Instant;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoopProxy};
 use winit::keyboard::ModifiersState;
 use winit::window::{Window, WindowId};
 
@@ -25,14 +25,7 @@ use crate::platform::MenuBar;
 use crate::render::viewer::{CacheLimits, Viewer};
 
 pub fn run(path: Option<PathBuf>, prefetch: Option<usize>) -> Result<(), Box<dyn Error>> {
-    let mut event_loop = EventLoop::<UserEvent>::with_user_event();
-    // macOS: the app installs its own system menu bar after the window exists.
-    #[cfg(target_os = "macos")]
-    {
-        use winit::platform::macos::EventLoopBuilderExtMacOS;
-        event_loop.with_default_menu(false);
-    }
-    let event_loop = event_loop.build()?;
+    let event_loop = crate::platform::event_loop_builder().build()?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let proxy = event_loop.create_proxy();
     event_loop.run_app(&mut App::new(path, prefetch, proxy))?;

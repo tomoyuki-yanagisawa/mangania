@@ -52,11 +52,11 @@ impl App {
             } else {
                 None
             });
-            // Windows keeps the native menu bar visible in borderless
-            // fullscreen, so detach it while fullscreen and restore it after.
-            #[cfg(target_os = "windows")]
+            // The platform menu decides whether it must be hidden in
+            // fullscreen.
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             if let Some(menu) = &self.menu {
-                menu.set_visible(!fullscreen);
+                menu.set_fullscreen(fullscreen);
             }
             window.set_cursor_visible(!fullscreen);
             window.request_redraw();
