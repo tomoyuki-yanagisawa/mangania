@@ -25,15 +25,15 @@ impl App {
     /// changed. The page cache is cleared so images are decoded again for the
     /// new target. The previous frame stays on screen until the new images are
     /// ready.
-    pub(super) fn sync_viewport(&mut self) -> bool {
+    pub(super) fn sync_viewport(&mut self) {
         let viewport = self.viewport();
         if viewport.is_empty() {
-            return false;
+            return;
         }
         let Some(viewer) = self.viewer.as_mut() else {
-            return false;
+            return;
         };
-        viewer.set_viewport(viewport)
+        viewer.set_viewport(viewport);
     }
 
     pub(super) fn draw(&mut self) {

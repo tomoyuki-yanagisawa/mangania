@@ -35,7 +35,7 @@ pub struct Prefetch {
 impl Prefetch {
     /// Takes ownership of the archive so ZIP reads and decodes never block the UI thread.
     pub fn start(
-        archive: Archive,
+        mut archive: Archive,
         cache: DiskCache,
         notify: impl Fn() -> bool + Send + 'static,
     ) -> Self {
@@ -50,8 +50,6 @@ impl Prefetch {
         let worker_shared = Arc::clone(&shared);
         thread::spawn(move || {
             debug_log::log(format_args!("worker: started"));
-            let mut archive = archive;
-            let cache = cache;
             loop {
                 let job = {
                     let mut queue = worker_shared.queue.lock().unwrap();
@@ -120,12 +118,7 @@ impl Prefetch {
         }
     }
 
-    /// `urgent` jobs jump ahead of queued prefetches and discard obsolete ones.
-    pub fn request(&mut self, page: usize, entry: usize, name: String, urgent: bool) {
-        if urgent {
-            self.request_batch(vec![(page, entry, name)]);
-            return;
-        }
+    pub fn request(&mut self, page: usize, entry: usize, name: String) {
         debug_log::log(format_args!("request: page={} entry={}", page + 1, entry));
         let mut queue = self.shared.queue.lock().unwrap();
         if queue.closed {

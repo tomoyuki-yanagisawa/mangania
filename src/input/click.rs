@@ -19,12 +19,6 @@ pub(crate) struct ClickTracker {
     pending: Option<PendingClick>,
 }
 
-impl Default for ClickTracker {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl ClickTracker {
     pub(crate) fn new() -> Self {
         Self {

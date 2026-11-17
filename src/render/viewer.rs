@@ -219,9 +219,9 @@ impl Viewer {
     /// Changes the display target. The page cache is cleared so images are
     /// decoded again at the new window size, filter, or display mode.
     /// Recorded page orientations are kept.
-    pub(crate) fn set_viewport(&mut self, viewport: Viewport) -> bool {
+    pub(crate) fn set_viewport(&mut self, viewport: Viewport) {
         if self.viewport == viewport {
-            return false;
+            return;
         }
         self.viewport = viewport;
         self.cache.clear();
@@ -233,7 +233,6 @@ impl Viewer {
             viewport.filter.as_str(),
             viewport.mode.as_str()
         ));
-        true
     }
 
     pub(crate) fn request_current(&mut self) {
@@ -281,7 +280,7 @@ impl Viewer {
         }
         let page_info = &self.pages[page];
         self.prefetch
-            .request(page, page_info.entry, page_info.name.clone(), false);
+            .request(page, page_info.entry, page_info.name.clone());
     }
 
     /// Resizes a decoded page once to its display size and caches it. The

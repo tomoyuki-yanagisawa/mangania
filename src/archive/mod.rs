@@ -28,7 +28,7 @@ pub struct Page {
     pub entry: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EntryInfo {
     pub size: u64,
     pub crc32: u32,
@@ -48,23 +48,17 @@ impl Archive {
         let file_len = metadata.len();
         let modified = metadata.modified().ok();
         debug_log::log(format_args!("archive: size={file_len} bytes"));
-        let zip = ZipArchive::new(file).map_err(|e| format!("read zip ({file_len} bytes): {e}"))?;
+        let mut zip =
+            ZipArchive::new(file).map_err(|e| format!("read zip ({file_len} bytes): {e}"))?;
         if zip.len() > MAX_ENTRIES {
             return Err(format!("too many zip entries: {}", zip.len()));
         }
 
-        let mut archive = Self {
-            zip,
-            pages: Vec::new(),
-            path: path.to_path_buf(),
-            size: file_len,
-            modified,
-        };
         let mut pages = Vec::new();
-        for entry in 0..archive.zip.len() {
+        for entry in 0..zip.len() {
             // Skip entries whose local header or name is unreadable instead of
             // failing the whole archive.
-            let Ok(file) = archive.zip.by_index(entry) else {
+            let Ok(file) = zip.by_index(entry) else {
                 continue;
             };
             if !file.is_file() {
@@ -85,11 +79,16 @@ impl Archive {
         pages.sort_by(|a, b| natural_cmp(&a.name, &b.name));
         debug_log::log(format_args!(
             "archive: entries={} pages={}",
-            archive.zip.len(),
+            zip.len(),
             pages.len()
         ));
-        archive.pages = pages;
-        Ok(archive)
+        Ok(Self {
+            zip,
+            pages,
+            path: path.to_path_buf(),
+            size: file_len,
+            modified,
+        })
     }
 
     /// Returns ZIP metadata used by the disk cache key and extraction path.

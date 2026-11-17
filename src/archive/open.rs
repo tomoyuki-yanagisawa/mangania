@@ -30,20 +30,14 @@ pub enum Format {
     ShellLink,
 }
 
-impl Format {
-    pub fn label(self) -> &'static str {
-        match self {
+impl std::fmt::Display for Format {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
             Self::Zip => "ZIP",
             Self::Unsupported => "unsupported format",
             Self::Broken => "broken or unreadable file",
             Self::ShellLink => "Windows shortcut",
-        }
-    }
-}
-
-impl std::fmt::Display for Format {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.label())
+        })
     }
 }
 
@@ -95,10 +89,6 @@ impl Entry {
         self.archive.pages.len()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.archive.pages.is_empty()
-    }
-
     pub fn page_name(&self, page: usize) -> Option<&str> {
         self.archive.pages.get(page).map(|page| page.name.as_str())
     }
@@ -132,25 +122,9 @@ fn probe(path: &Path) -> Result<Probe, String> {
 /// `Unknown` can still be a ZIP with leading data; [`Entry::open`] tries the
 /// ZIP parser before returning a format error.
 pub fn detect(path: &Path) -> Format {
-    if is_shortcut(path) {
-        return Format::ShellLink;
-    }
-    let Ok(metadata) = std::fs::metadata(path) else {
-        return Format::Broken;
-    };
-    let Ok(mut file) = File::open(path) else {
-        return Format::Broken;
-    };
-    let mut prefix = Vec::with_capacity(PROBE_BYTES);
-    if file
-        .by_ref()
-        .take(PROBE_BYTES as u64)
-        .read_to_end(&mut prefix)
-        .is_err()
-    {
-        return Format::Broken;
-    }
-    detect_prefix(path, &prefix, metadata.len())
+    probe(path)
+        .map(|probe| probe.format)
+        .unwrap_or(Format::Broken)
 }
 
 fn detect_prefix(path: &Path, prefix: &[u8], len: u64) -> Format {
@@ -172,9 +146,6 @@ fn detect_prefix(path: &Path, prefix: &[u8], len: u64) -> Format {
         } else {
             Format::Zip
         };
-    }
-    if prefix.starts_with(b"PK") {
-        return Format::Broken;
     }
     Format::Broken
 }
