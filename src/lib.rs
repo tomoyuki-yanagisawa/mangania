@@ -2,6 +2,7 @@ pub mod app;
 pub mod archive;
 pub mod cli;
 pub mod config;
+pub(crate) mod config_file;
 pub(crate) mod debug_log;
 pub(crate) mod event;
 pub mod export;

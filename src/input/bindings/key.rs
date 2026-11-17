@@ -1,11 +1,12 @@
 //! Keyboard binding parsing and matching.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use serde::Deserialize;
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 
-use super::{Action, load_bindings, resolve_bindings};
+use super::{Action, load_bindings, load_bindings_from, resolve_bindings};
 
 pub const KEYBINDINGS_FILE: &str = "keybindings.toml";
 
@@ -201,7 +202,20 @@ impl Default for KeyBindings {
 
 impl KeyBindings {
     pub fn load() -> Self {
-        load_bindings(KEYBINDINGS_FILE, DEFAULT_KEYBINDINGS, Self::parse)
+        load_bindings(
+            KEYBINDINGS_FILE,
+            DEFAULT_KEYBINDINGS,
+            Self::is_valid,
+            Self::parse,
+        )
+    }
+
+    pub fn load_from(path: &Path) -> Self {
+        load_bindings_from(path, DEFAULT_KEYBINDINGS, Self::is_valid, Self::parse)
+    }
+
+    fn is_valid(text: &str) -> bool {
+        toml::from_str::<RawKeyBindings>(text).is_ok()
     }
 
     pub fn parse(text: &str) -> Self {

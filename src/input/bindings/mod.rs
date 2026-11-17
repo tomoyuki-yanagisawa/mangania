@@ -106,12 +106,29 @@ fn resolve_bindings<T: Copy>(
     pairs
 }
 
-fn load_bindings<T: Default>(file: &str, default_text: &str, parse: impl Fn(&str) -> T) -> T {
+fn load_bindings<T: Default>(
+    file: &str,
+    default_text: &str,
+    valid: impl Fn(&str) -> bool,
+    parse: impl Fn(&str) -> T,
+) -> T {
     let Some(path) = config::config_path(file) else {
         return T::default();
     };
-    ensure_default_file(&path, default_text);
-    match std::fs::read_to_string(&path) {
+    load_bindings_from(&path, default_text, valid, parse)
+}
+
+fn load_bindings_from<T: Default>(
+    path: &Path,
+    default_text: &str,
+    valid: impl Fn(&str) -> bool,
+    parse: impl Fn(&str) -> T,
+) -> T {
+    ensure_default_file(path, default_text);
+    if let Err(error) = crate::config_file::complete_file(path, default_text, valid) {
+        eprintln!("mangania: update {}: {error}", path.display());
+    }
+    match std::fs::read_to_string(path) {
         Ok(text) => parse(&text),
         Err(error) => {
             eprintln!("mangania: read {}: {error}", path.display());

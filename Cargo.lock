@@ -798,6 +798,7 @@ dependencies = [
  "serde",
  "softbuffer",
  "toml",
+ "toml_edit",
  "windows-sys 0.52.0",
  "winit",
  "winresource",
@@ -1878,6 +1879,7 @@ dependencies = [
  "indexmap",
  "toml_datetime",
  "toml_parser",
+ "toml_writer",
  "winnow",
 ]
 

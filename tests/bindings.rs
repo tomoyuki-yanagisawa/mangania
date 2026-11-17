@@ -218,3 +218,100 @@ fn invalid_mouse_options_use_defaults() {
     assert_eq!(bindings.wheel_threshold(), 50.0);
     assert_eq!(bindings.double_click_interval(), Duration::from_millis(400));
 }
+
+#[test]
+fn completion_adds_missing_key_bindings() {
+    let dir = std::env::temp_dir().join(format!("mangania-keys-complete-{}", std::process::id()));
+    let path = dir.join("keybindings.toml");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        &path,
+        "# keep this comment\n[keys]\nnext = [\"n\"]\nquit = []\nunknown_action = [\"x\"]\n",
+    )
+    .unwrap();
+
+    let bindings = KeyBindings::load_from(&path);
+    let empty = ModifiersState::empty();
+    assert_key(&bindings, character("n"), empty, Some(Action::Next));
+    assert_key(&bindings, Key::Named(NamedKey::ArrowRight), empty, None);
+    assert_key(
+        &bindings,
+        Key::Named(NamedKey::ArrowLeft),
+        empty,
+        Some(Action::Prev),
+    );
+    assert_key(&bindings, Key::Named(NamedKey::Escape), empty, None);
+
+    let first = std::fs::read_to_string(&path).unwrap();
+    assert!(first.contains("# keep this comment"));
+    assert!(first.contains("next = [\"n\"]"));
+    assert!(!first.contains("next = [\"Right\"]"));
+    assert!(first.contains("quit = []"));
+    assert!(first.contains("unknown_action = [\"x\"]"));
+    assert!(first.contains("prev = [\"Left\"]"));
+
+    KeyBindings::load_from(&path);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), first);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn completion_adds_missing_mouse_bindings() {
+    let dir = std::env::temp_dir().join(format!("mangania-mouse-complete-{}", std::process::id()));
+    let path = dir.join("mouse.toml");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        &path,
+        "wheel_threshold = 25.0\ndouble_click_ms = 400\n\n[bindings]\nnext = [\"middle\"]\n",
+    )
+    .unwrap();
+
+    let bindings = MouseBindings::load_from(&path);
+    assert_eq!(bindings.wheel_threshold(), 25.0);
+    assert_eq!(bindings.double_click_interval(), Duration::from_millis(400));
+    assert_mouse(
+        &bindings,
+        MouseInput::Button(MouseButton::Middle),
+        Some(Action::Next),
+    );
+    assert_mouse(&bindings, MouseInput::Button(MouseButton::Left), None);
+    assert_mouse(
+        &bindings,
+        MouseInput::Button(MouseButton::Right),
+        Some(Action::Prev),
+    );
+    assert_mouse(
+        &bindings,
+        MouseInput::DoubleClick(MouseButton::Left),
+        Some(Action::SavePage),
+    );
+
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("wheel_threshold = 25.0"));
+    assert!(text.contains("double_click_ms = 400"));
+    assert!(!text.contains("double_click_ms = 500"));
+    assert!(text.contains("next = [\"middle\"]"));
+    assert!(text.contains("prev = [\"right\", \"wheel_up\"]"));
+    assert!(text.contains("save_page = [\"double_left\"]"));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn invalid_binding_files_are_not_completed() {
+    let dir = std::env::temp_dir().join(format!("mangania-keys-invalid-{}", std::process::id()));
+    let path = dir.join("keybindings.toml");
+    std::fs::create_dir_all(&dir).unwrap();
+    let original = "[keys\nnext = []\n";
+    std::fs::write(&path, original).unwrap();
+
+    let bindings = KeyBindings::load_from(&path);
+
+    assert_key(
+        &bindings,
+        Key::Named(NamedKey::ArrowRight),
+        ModifiersState::empty(),
+        Some(Action::Next),
+    );
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
