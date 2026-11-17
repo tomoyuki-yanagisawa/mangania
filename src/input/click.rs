@@ -83,6 +83,11 @@ impl ClickTracker {
         self.pending.take().and_then(|pending| pending.action)
     }
 
+    /// Drops a pending single click without running it.
+    pub(crate) fn cancel(&mut self) {
+        self.pending = None;
+    }
+
     pub(crate) fn deadline(&self) -> Option<Instant> {
         self.pending.as_ref().map(|pending| pending.deadline)
     }
@@ -168,6 +173,24 @@ save_page = []
         let actions = clicks.press(MouseButton::Left, &mouse, now + Duration::from_millis(401));
         assert_eq!(actions, vec![Action::Next]);
         assert!(clicks.deadline().is_some());
+    }
+
+    #[test]
+    fn cancel_drops_a_pending_click() {
+        let mut clicks = ClickTracker::new();
+        let mouse = MouseBindings::default();
+
+        assert!(
+            clicks
+                .press(MouseButton::Left, &mouse, Instant::now())
+                .is_empty()
+        );
+        assert!(clicks.deadline().is_some());
+
+        clicks.cancel();
+
+        assert_eq!(clicks.deadline(), None);
+        assert_eq!(clicks.flush(), None);
     }
 
     #[test]

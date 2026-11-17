@@ -5,6 +5,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::keyboard::Key;
 
 use crate::config::DisplayMode;
+use crate::debug_log;
 use crate::input::bindings::{Action, MouseInput, WheelDirection};
 use crate::input::navigation;
 
@@ -58,6 +59,19 @@ impl App {
     }
 
     pub(super) fn handle_click(&mut self, button: MouseButton, event_loop: &ActiveEventLoop) {
+        // Windows discards the activation click in the platform layer. This
+        // check also covers platforms that deliver it before the focus event.
+        if !self
+            .window
+            .as_ref()
+            .is_some_and(|window| window.has_focus())
+        {
+            debug_log::log(format_args!("click: ignored while the window is inactive"));
+            self.clicks.cancel();
+            self.update_click_timer(event_loop);
+            return;
+        }
+
         let actions = self.clicks.press(button, &self.mouse, Instant::now());
         for action in actions {
             self.perform(action, event_loop);
