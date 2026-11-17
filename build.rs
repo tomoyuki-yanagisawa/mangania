@@ -34,7 +34,6 @@ fn main() {
     // its own RGBA icon, which winit converts to an HICON.
     write_rgba(&tree, &out_dir, "titlebar", TITLEBAR_ICON_SIZE);
     write_rgba(&tree, &out_dir, "taskbar", TASKBAR_ICON_SIZE);
-    write_window_icon_module(&out_dir);
 
     winresource::WindowsResource::new()
         .set_icon(icon_path.to_str().expect("icon path is UTF-8"))
@@ -50,18 +49,6 @@ fn write_rgba(tree: &usvg::Tree, out_dir: &Path, name: &str, size: u32) {
         rgba.extend_from_slice(&[color.red(), color.green(), color.blue(), color.alpha()]);
     }
     fs::write(out_dir.join(format!("mangania-{name}.rgba")), rgba).expect("write window icon");
-}
-
-fn write_window_icon_module(out_dir: &Path) {
-    let source = format!(
-        "\
-pub(crate) const TITLEBAR_ICON_SIZE: u32 = {TITLEBAR_ICON_SIZE};
-pub(crate) const TITLEBAR_ICON_RGBA: &[u8] = include_bytes!(\"mangania-titlebar.rgba\");
-pub(crate) const TASKBAR_ICON_SIZE: u32 = {TASKBAR_ICON_SIZE};
-pub(crate) const TASKBAR_ICON_RGBA: &[u8] = include_bytes!(\"mangania-taskbar.rgba\");
-"
-    );
-    fs::write(out_dir.join("window_icon.rs"), source).expect("write window icon module");
 }
 
 fn render_pixmap(tree: &usvg::Tree, size: u32) -> Pixmap {
