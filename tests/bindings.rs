@@ -174,7 +174,7 @@ fn default_mouse_bindings_work() {
         Some(Action::Next)
     );
     assert_eq!(bindings.wheel_threshold(), 50.0);
-    assert_eq!(bindings.double_click_interval(), Duration::from_millis(400));
+    assert_eq!(bindings.double_click_interval(), Duration::from_millis(500));
 }
 
 #[test]
@@ -216,5 +216,5 @@ save_page = ["double_left", "double_middle"]
 fn invalid_mouse_options_use_defaults() {
     let bindings = MouseBindings::parse("wheel_threshold = 0\ndouble_click_ms = 0\n");
     assert_eq!(bindings.wheel_threshold(), 50.0);
-    assert_eq!(bindings.double_click_interval(), Duration::from_millis(400));
+    assert_eq!(bindings.double_click_interval(), Duration::from_millis(500));
 }
