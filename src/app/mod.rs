@@ -259,7 +259,8 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
                 self.sync_viewport();
-                self.update_fullscreen_menu(self.is_fullscreen());
+                #[cfg(any(target_os = "windows", target_os = "macos"))]
+                self.sync_menu();
                 self.refresh();
             }
             WindowEvent::DroppedFile(path) => {

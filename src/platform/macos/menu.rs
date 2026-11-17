@@ -14,11 +14,14 @@ use winit::platform::macos::EventLoopBuilderExtMacOS;
 use crate::config::{DisplayMode, ScaleFilter};
 use crate::event::UserEvent;
 use crate::input::bindings::Action;
-use crate::platform::{MenuCommand, MenuState};
+use crate::platform::{MenuCommand, MenuState, action_for_mode};
 
 /// Lets the app install its own system menu instead of winit's default menu.
-pub(crate) fn disable_default_menu(builder: &mut EventLoopBuilder<UserEvent>) {
+pub(crate) fn disable_default_menu(
+    mut builder: EventLoopBuilder<UserEvent>,
+) -> EventLoopBuilder<UserEvent> {
     builder.with_default_menu(false);
+    builder
 }
 
 struct MenuTargetIvars {
@@ -237,12 +240,4 @@ fn set_checked(item: &NSMenuItem, checked: bool) {
     } else {
         NSControlStateValueOff
     });
-}
-
-fn action_for_mode(mode: DisplayMode) -> Action {
-    match mode {
-        DisplayMode::Single => Action::SinglePage,
-        DisplayMode::Spread => Action::SpreadPage,
-        DisplayMode::Mixed => Action::MixedPage,
-    }
 }
