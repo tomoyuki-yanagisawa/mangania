@@ -292,9 +292,12 @@ impl Viewer {
             resized(&image, target, self.viewport.filter)
         };
         let display_size = display.dimensions();
-        let next = self.current.saturating_add(1);
-        let keep = [self.current, next];
-        let retained = self.cache.insert(page, display, &keep, self.current);
+        let step = if self.viewport.mode == DisplayMode::Single {
+            1
+        } else {
+            2
+        };
+        let retained = self.cache.insert(page, display, self.current, step);
         if retained {
             self.rejected.remove(&page);
         } else {

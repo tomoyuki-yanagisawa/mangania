@@ -37,28 +37,23 @@ impl PageCache {
         self.entries.contains_key(&page)
     }
 
-    /// Inserts a display-sized image. Pages in `keep` are retained even when
-    /// the byte budget is already full. When eviction is needed, entries whose
-    /// page is farthest from `current` are removed first.
+    /// Inserts a display-sized image.
+    ///
+    /// `current` is the current page and `step` is the number of pages in one
+    /// display step (1 for single-page mode, 2 for spread and mixed modes).
+    /// The previous, current, and next display pages are protected. Older
+    /// pages are evicted first, then pages farther in the future.
     pub fn insert(
         &mut self,
         page: usize,
         image: Arc<RgbaImage>,
-        keep: &[usize],
         current: usize,
+        step: usize,
     ) -> bool {
+        let step = step.max(1);
         let width = image.width();
         let height = image.height();
         let bytes = image.as_raw().len();
-        let protected = keep.contains(&page);
-        if (self.max_entries == 0 && !protected) || (bytes > self.max_bytes && !protected) {
-            debug_log::log(format_args!(
-                "page cache: skip page={} size={width}x{height} bytes={bytes} over limit={}",
-                page + 1,
-                self.max_bytes
-            ));
-            return false;
-        }
 
         if let Some(old) = self.entries.insert(page, image) {
             self.used_bytes = self.used_bytes.saturating_sub(old.as_raw().len());
@@ -72,7 +67,7 @@ impl PageCache {
         while (self.order.len() > self.max_entries || self.used_bytes > self.max_bytes)
             && self.entries.len() > 1
         {
-            let Some((oldest, index)) = self.eviction_candidate(current, keep) else {
+            let Some((oldest, index)) = self.eviction_candidate(current, step) else {
                 break;
             };
             self.order.remove(index);
@@ -80,8 +75,9 @@ impl PageCache {
                 let bytes = image.as_raw().len();
                 self.used_bytes = self.used_bytes.saturating_sub(bytes);
                 debug_log::log(format_args!(
-                    "page cache: evict page={} distance={} size={}x{} bytes={}",
+                    "page cache: evict page={} current={} distance={} size={}x{} bytes={}",
                     oldest + 1,
+                    current + 1,
                     oldest.abs_diff(current),
                     image.width(),
                     image.height(),
@@ -92,39 +88,50 @@ impl PageCache {
 
         let retained = self.entries.contains_key(&page);
         debug_log::log(format_args!(
-            "page cache: insert page={} size={width}x{height} bytes={bytes} used={}/{} entries={} current={} keep={:?} retained={retained}",
+            "page cache: insert page={} size={width}x{height} bytes={bytes} used={}/{} entries={} current={} step={step} retained={retained}",
             page + 1,
             self.used_bytes,
             self.max_bytes,
             self.entries.len(),
-            current + 1,
-            keep
+            current + 1
         ));
         retained
     }
 
-    /// Picks the farthest non-protected page from `current`.
+    /// Picks a page to evict.
     ///
-    /// Equal distances prefer pages behind the current page so near-future
-    /// pages survive longer. Remaining ties use the older insertion.
-    fn eviction_candidate(&self, current: usize, keep: &[usize]) -> Option<(usize, usize)> {
-        let mut best: Option<(usize, usize, usize, bool)> = None;
+    /// Pages before the previous display have the lowest priority. Pages after
+    /// the next display come next, farthest first. The previous, current, and
+    /// next display pages are protected and may exceed the soft limits.
+    fn eviction_candidate(&self, current: usize, step: usize) -> Option<(usize, usize)> {
+        let past_end = current.saturating_sub(step);
+        let future_start = current.saturating_add(step.saturating_mul(2));
+        let mut best: Option<(usize, usize, u8, usize)> = None;
         for (index, page) in self.order.iter().enumerate() {
-            if keep.contains(page) || !self.entries.contains_key(page) {
+            if !self.entries.contains_key(page) {
                 continue;
             }
-            let distance = page.abs_diff(current);
-            let ahead = *page > current;
+            let (class, distance) = if *page < past_end {
+                (0, past_end - *page)
+            } else if *page >= future_start {
+                (1, *page - future_start)
+            } else {
+                continue;
+            };
             let replace = match best {
                 None => true,
-                Some((_, best_index, best_distance, best_ahead)) => {
-                    distance > best_distance
-                        || (distance == best_distance && ahead != best_ahead && !ahead)
-                        || (distance == best_distance && ahead == best_ahead && index < best_index)
+                Some((_, best_index, best_class, best_distance)) => {
+                    if class != best_class {
+                        class < best_class
+                    } else if distance != best_distance {
+                        distance > best_distance
+                    } else {
+                        index < best_index
+                    }
                 }
             };
             if replace {
-                best = Some((*page, index, distance, ahead));
+                best = Some((*page, index, class, distance));
             }
         }
         best.map(|(page, index, _, _)| (page, index))
@@ -153,5 +160,52 @@ impl PageCache {
 
     pub fn used_bytes(&self) -> usize {
         self.used_bytes
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use image::RgbaImage;
+
+    use super::PageCache;
+
+    fn image() -> Arc<RgbaImage> {
+        Arc::new(RgbaImage::new(1, 1))
+    }
+
+    #[test]
+    fn evicts_far_past_before_far_future() {
+        let mut cache = PageCache::new(2, 1000);
+        cache.insert(0, image(), 5, 1);
+        cache.insert(8, image(), 5, 1);
+        cache.insert(9, image(), 5, 1);
+
+        assert!(!cache.contains(0));
+        assert!(cache.contains(8));
+        assert!(cache.contains(9));
+    }
+
+    #[test]
+    fn evicts_the_farthest_future_first() {
+        let mut cache = PageCache::new(2, 1000);
+        cache.insert(6, image(), 5, 1);
+        cache.insert(7, image(), 5, 1);
+        cache.insert(8, image(), 5, 1);
+
+        assert!(cache.contains(6));
+        assert!(cache.contains(7));
+        assert!(!cache.contains(8));
+    }
+
+    #[test]
+    fn one_step_back_and_forward_may_exceed_the_limits() {
+        let mut cache = PageCache::new(1, 1000);
+        for page in 4..=6 {
+            assert!(cache.insert(page, image(), 5, 1));
+        }
+
+        assert_eq!(cache.len(), 3);
     }
 }
