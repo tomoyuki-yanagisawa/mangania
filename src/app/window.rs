@@ -1,19 +1,81 @@
-use winit::window::Fullscreen;
-
-#[cfg(any(target_os = "windows", target_os = "macos"))]
+use winit::dpi::{LogicalSize, PhysicalSize};
 use winit::event_loop::ActiveEventLoop;
+use winit::window::{Fullscreen, Window, WindowAttributes};
 
-use crate::config::DisplayMode;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::config::ScaleFilter;
+use crate::config::{DisplayMode, WindowGeometry};
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::debug_log;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::storage::disk_cache::DiskCache;
 
-use super::App;
+use super::{App, DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH};
 
 impl App {
+    /// Window attributes for the first window, restoring the saved size when it
+    /// is usable. The position is applied after creation by
+    /// [`App::restored_position`] so it matches the stored outer position on
+    /// every platform.
+    pub(super) fn window_attributes(&self) -> WindowAttributes {
+        let mut attributes = Window::default_attributes()
+            .with_title("MangaNia")
+            .with_inner_size(LogicalSize::new(
+                DEFAULT_WINDOW_WIDTH,
+                DEFAULT_WINDOW_HEIGHT,
+            ));
+        if let Some((width, height)) = self.config.window.and_then(WindowGeometry::size) {
+            attributes = attributes.with_inner_size(PhysicalSize::new(width, height));
+        }
+        attributes
+    }
+
+    /// Saved outer position when it overlaps an available monitor.
+    pub(super) fn restored_position(&self, event_loop: &ActiveEventLoop) -> Option<(i32, i32)> {
+        let geometry = self.config.window?;
+        let position = geometry.position()?;
+        let size = geometry
+            .size()
+            .unwrap_or((DEFAULT_WINDOW_WIDTH as u32, DEFAULT_WINDOW_HEIGHT as u32));
+        position_is_visible(event_loop, position, size).then_some(position)
+    }
+
+    /// Remember the latest windowed size and position without writing config.
+    pub(super) fn track_window_geometry(&mut self) {
+        if self.is_fullscreen() {
+            return;
+        }
+        let Some(window) = &self.window else {
+            return;
+        };
+        if window.is_minimized() == Some(true) {
+            return;
+        }
+        let size = window.inner_size();
+        if size.width == 0 || size.height == 0 {
+            return;
+        }
+        let position = window.outer_position().ok();
+        self.window_geometry = Some(WindowGeometry {
+            width: size.width,
+            height: size.height,
+            x: position.map(|position| position.x),
+            y: position.map(|position| position.y),
+        });
+    }
+
+    /// Persist the tracked windowed geometry if it changed.
+    pub(super) fn save_window_geometry(&mut self) {
+        self.track_window_geometry();
+        let Some(geometry) = self.window_geometry else {
+            return;
+        };
+        if self.config.window != Some(geometry) {
+            self.config.window = Some(geometry);
+            self.config.save();
+        }
+    }
+
     pub(super) fn set_mode(&mut self, mode: DisplayMode) {
         self.scroll = 0.0;
         self.config.mode = mode;
@@ -118,4 +180,26 @@ impl App {
             self.perform(action, event_loop);
         }
     }
+}
+
+/// Whether the window rectangle overlaps any available monitor. Positions
+/// outside every monitor (for example after unplugging a display) are ignored.
+fn position_is_visible(
+    event_loop: &ActiveEventLoop,
+    (x, y): (i32, i32),
+    (width, height): (u32, u32),
+) -> bool {
+    let left = i64::from(x);
+    let top = i64::from(y);
+    let right = left + i64::from(width);
+    let bottom = top + i64::from(height);
+    event_loop.available_monitors().any(|monitor| {
+        let position = monitor.position();
+        let size = monitor.size();
+        let monitor_left = i64::from(position.x);
+        let monitor_top = i64::from(position.y);
+        let monitor_right = monitor_left + i64::from(size.width);
+        let monitor_bottom = monitor_top + i64::from(size.height);
+        left < monitor_right && right > monitor_left && top < monitor_bottom && bottom > monitor_top
+    })
 }

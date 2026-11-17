@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use mangania::config::{
     Config, DEFAULT_CACHE_MB, DEFAULT_CACHE_PAGES, DEFAULT_PREFETCH, DisplayMode, ScaleFilter,
+    WindowGeometry,
 };
 
 #[test]
@@ -101,6 +102,56 @@ fn default_config_text_round_trips() {
 }
 
 #[test]
+fn parses_window_geometry() {
+    let config = Config::parse("[window]\nwidth = 1280\nheight = 720\nx = -100\ny = 40\n");
+    let geometry = config.window.unwrap();
+    assert_eq!(geometry.size(), Some((1280, 720)));
+    assert_eq!(geometry.position(), Some((-100, 40)));
+
+    assert_eq!(Config::default().window, None);
+    assert_eq!(Config::parse("").window, None);
+}
+
+#[test]
+fn ignores_unset_or_zero_window_geometry() {
+    let partial = Config::parse("[window]\nwidth = 1280\n").window.unwrap();
+    assert_eq!(partial.size(), None);
+    assert_eq!(partial.position(), None);
+
+    let zero = Config::parse("[window]\nwidth = 0\nheight = 0\nx = 0\ny = 0\n")
+        .window
+        .unwrap();
+    assert_eq!(zero.size(), None);
+    assert_eq!(zero.position(), Some((0, 0)));
+}
+
+#[test]
+fn round_trips_window_geometry() {
+    let config = Config {
+        window: Some(WindowGeometry {
+            width: 1280,
+            height: 720,
+            x: Some(-100),
+            y: Some(40),
+        }),
+        ..Config::default()
+    };
+    let text = config.to_toml();
+    assert!(text.contains("\n[window]\n"));
+    assert!(text.contains("width = 1280"));
+    assert!(text.contains("x = -100"));
+    assert_eq!(Config::parse(&text), config);
+
+    // The commented export_dir hint stays above the [window] table.
+    let hint = text.find("# export_dir").unwrap();
+    let table = text.find("\n[window]\n").unwrap();
+    assert!(hint < table);
+
+    let default = Config::default().to_toml();
+    assert!(!default.contains("\n[window]\n"));
+}
+
+#[test]
 fn writes_default_config_on_first_load() {
     let dir = std::env::temp_dir().join(format!("mangania-config-create-{}", std::process::id()));
     let path = dir.join("config.toml");
@@ -145,6 +196,12 @@ fn round_trips_config_file() {
         cache_mb: 64,
         scale_filter: ScaleFilter::Gaussian,
         debug: true,
+        window: Some(WindowGeometry {
+            width: 1000,
+            height: 700,
+            x: Some(10),
+            y: Some(20),
+        }),
     };
 
     config.save_to(&path).unwrap();

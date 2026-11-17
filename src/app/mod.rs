@@ -9,13 +9,13 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use winit::application::ApplicationHandler;
-use winit::dpi::LogicalSize;
+use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::ModifiersState;
 use winit::window::{Window, WindowId};
 
-use crate::config::Config;
+use crate::config::{Config, WindowGeometry};
 use crate::debug_log;
 use crate::event::UserEvent;
 use crate::input::bindings::{KeyBindings, MouseBindings};
@@ -23,6 +23,9 @@ use crate::input::click::ClickTracker;
 use crate::render::viewer::{CacheLimits, Viewer};
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::ui::menu::MenuBar;
+
+const DEFAULT_WINDOW_WIDTH: f64 = 1200.0;
+const DEFAULT_WINDOW_HEIGHT: f64 = 900.0;
 
 pub fn run(path: Option<PathBuf>, prefetch: Option<usize>) -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
@@ -45,6 +48,7 @@ struct App {
     modifiers: ModifiersState,
     clicks: ClickTracker,
     config: Config,
+    window_geometry: Option<WindowGeometry>,
     keys: KeyBindings,
     mouse: MouseBindings,
     status: Option<String>,
@@ -106,6 +110,7 @@ impl App {
             modifiers: ModifiersState::empty(),
             clicks: ClickTracker::new(),
             config,
+            window_geometry: None,
             keys,
             mouse,
             status: None,
@@ -181,12 +186,11 @@ impl ApplicationHandler<UserEvent> for App {
 
         let setup = || -> Result<_, String> {
             let window = event_loop
-                .create_window(
-                    Window::default_attributes()
-                        .with_title("MangaNia")
-                        .with_inner_size(LogicalSize::new(1200.0, 900.0)),
-                )
+                .create_window(self.window_attributes())
                 .map_err(|error| format!("create window: {error}"))?;
+            if let Some((x, y)) = self.restored_position(event_loop) {
+                window.set_outer_position(PhysicalPosition::new(x, y));
+            }
             let window = Arc::new(window);
             let context = softbuffer::Context::new(window.clone())
                 .map_err(|error| format!("create display context: {error}"))?;
@@ -246,6 +250,10 @@ impl ApplicationHandler<UserEvent> for App {
         self.update_click_timer(event_loop);
     }
 
+    fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        self.save_window_geometry();
+    }
+
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -253,12 +261,17 @@ impl ApplicationHandler<UserEvent> for App {
         event: WindowEvent,
     ) {
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                self.save_window_geometry();
+                event_loop.exit();
+            }
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
+                self.track_window_geometry();
                 self.sync_viewport();
                 self.update_fullscreen_menu(self.is_fullscreen());
                 self.refresh();
             }
+            WindowEvent::Moved(_) => self.track_window_geometry(),
             WindowEvent::DroppedFile(path) => {
                 if let Some(window) = &self.window {
                     window.focus_window();
