@@ -87,6 +87,31 @@ impl DisplayMode {
     }
 }
 
+/// Window geometry in physical pixels. A zero width or height means unset, and
+/// `x`/`y` are only written when the position is known.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WindowGeometry {
+    pub width: u32,
+    pub height: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub y: Option<i32>,
+}
+
+impl WindowGeometry {
+    /// Inner size, or `None` when unset or the window was minimized.
+    pub fn size(self) -> Option<(u32, u32)> {
+        (self.width > 0 && self.height > 0).then_some((self.width, self.height))
+    }
+
+    /// Outer position, or `None` when it could not be read.
+    pub fn position(self) -> Option<(i32, i32)> {
+        Some((self.x?, self.y?))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -99,6 +124,9 @@ pub struct Config {
     pub cache_mb: usize,
     pub scale_filter: ScaleFilter,
     pub debug: bool,
+    /// Latest windowed geometry, persisted on exit.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window: Option<WindowGeometry>,
 }
 
 impl Default for Config {
@@ -112,6 +140,7 @@ impl Default for Config {
             cache_mb: DEFAULT_CACHE_MB,
             scale_filter: ScaleFilter::default(),
             debug: false,
+            window: None,
         }
     }
 }
@@ -177,12 +206,20 @@ impl Config {
             "# cache_mb: メモリキャッシュ上限（MiB）。0 は既定値\n",
             "# scale_filter: nearest / triangle / hamming / catmull_rom / mitchell / gaussian / lanczos3\n",
             "# debug: true で debug.log にログを出力\n",
+            "# [window]: 終了時のウィンドウサイズと位置（物理ピクセル）。省略時は 1200x900 で OS が配置\n",
             "\n",
         ));
-        text.push_str(&toml::to_string(self).unwrap_or_default());
+        let body = toml::to_string(self).unwrap_or_default();
+        // Keep the commented export_dir hint above a trailing [window] table.
+        let (fields, table) = match body.find("\n[") {
+            Some(index) => body.split_at(index),
+            None => (body.as_str(), ""),
+        };
+        text.push_str(fields);
         if self.export_dir.is_none() {
             text.push_str("\n# export_dir = \"~/Pictures/MangaNia\"\n");
         }
+        text.push_str(table);
         text
     }
 
