@@ -4,6 +4,7 @@ use winit::event::{MouseButton, MouseScrollDelta};
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::keyboard::Key;
 
+use crate::config::DisplayMode;
 use crate::input::bindings::{Action, MouseInput, WheelDirection};
 use crate::input::navigation;
 
@@ -14,12 +15,7 @@ impl App {
         let Some(viewer) = &self.viewer else {
             return;
         };
-        let Some(page) = navigation::step(
-            viewer.current,
-            viewer.pages.len(),
-            self.config.spread,
-            delta,
-        ) else {
+        let Some(page) = viewer.step(delta) else {
             return;
         };
         self.go_to_unaligned(page);
@@ -124,9 +120,17 @@ impl App {
             Action::PrevSingle => self.navigate_single(-1),
             Action::First => self.go_to(0),
             Action::Last => self.go_to(usize::MAX),
-            Action::ToggleSpread => self.set_spread(!self.config.spread),
-            Action::SinglePage => self.set_spread(false),
-            Action::SpreadPage => self.set_spread(true),
+            Action::ToggleSpread => {
+                let mode = match self.config.mode {
+                    DisplayMode::Single => DisplayMode::Spread,
+                    DisplayMode::Spread => DisplayMode::Mixed,
+                    DisplayMode::Mixed => DisplayMode::Single,
+                };
+                self.set_mode(mode);
+            }
+            Action::SinglePage => self.set_mode(DisplayMode::Single),
+            Action::SpreadPage => self.set_mode(DisplayMode::Spread),
+            Action::MixedPage => self.set_mode(DisplayMode::Mixed),
             Action::ToggleFullscreen => {
                 let fullscreen = self.is_fullscreen();
                 self.set_fullscreen(!fullscreen);

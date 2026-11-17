@@ -3,6 +3,7 @@ use winit::window::Fullscreen;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use winit::event_loop::ActiveEventLoop;
 
+use crate::config::DisplayMode;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::config::ScaleFilter;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
@@ -13,19 +14,18 @@ use crate::storage::disk_cache::DiskCache;
 use super::App;
 
 impl App {
-    pub(super) fn set_spread(&mut self, spread: bool) {
+    pub(super) fn set_mode(&mut self, mode: DisplayMode) {
         self.scroll = 0.0;
-        self.config.spread = spread;
+        self.config.mode = mode;
         self.config.save();
         self.status = None;
         #[cfg(any(target_os = "windows", target_os = "macos"))]
         if let Some(menu) = &self.menu {
-            menu.single.set_checked(!spread);
-            menu.spread.set_checked(spread);
+            menu.set_mode_checked(mode);
         }
 
         if let Some(viewer) = self.viewer.as_mut() {
-            if spread {
+            if mode == DisplayMode::Spread {
                 viewer.align_spread();
             }
             viewer.prefetch.clear_pending();

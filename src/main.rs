@@ -14,7 +14,7 @@ usage: mangania [--prefetch N] [--list | --check | --render-page PAGE OUTPUT] [A
   --list             print indexed pages and exit
   --check            decode every page and report errors
   --render-page N O  write page N (1-based) to image file O
-  --prefetch N       spreads to prefetch ahead (pages in single-page mode)
+  --prefetch N       prefetch depth (2 pages per step except single-page mode)
   --help             show this help";
 
 fn main() {

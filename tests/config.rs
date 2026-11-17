@@ -1,20 +1,29 @@
 use std::path::PathBuf;
 
 use mangania::config::{
-    Config, DEFAULT_CACHE_MB, DEFAULT_CACHE_PAGES, DEFAULT_PREFETCH, ScaleFilter,
+    Config, DEFAULT_CACHE_MB, DEFAULT_CACHE_PAGES, DEFAULT_PREFETCH, DisplayMode, ScaleFilter,
 };
 
 #[test]
 fn parses_all_config_fields() {
-    assert!(Config::parse("spread = true\n").spread);
-    assert!(!Config::parse("# comment\nspread = false\n").spread);
-    assert!(!Config::parse("spread = nope\n").spread);
-    assert!(!Config::parse("").spread);
+    assert_eq!(
+        Config::parse("mode = \"spread\"\n").mode,
+        DisplayMode::Spread
+    );
+    assert_eq!(
+        Config::parse("# comment\nmode = \"single\"\n").mode,
+        DisplayMode::Single
+    );
+    assert_eq!(
+        Config::parse("mode = \"invalid\"\n").mode,
+        DisplayMode::Single
+    );
+    assert_eq!(Config::parse("").mode, DisplayMode::Single);
 
     let config = Config::parse(
-        "spread = true\nexport_dir = \"/tmp/mangania-out\"\nexport_name = \"{book}_{page:03}\"\nprefetch = 4\ncache_pages = 6\ncache_mb = 64\nscale_filter = \"lanczos3\"\ndebug = true\n",
+        "mode = \"mixed\"\nexport_dir = \"/tmp/mangania-out\"\nexport_name = \"{book}_{page:03}\"\nprefetch = 4\ncache_pages = 6\ncache_mb = 64\nscale_filter = \"lanczos3\"\ndebug = true\n",
     );
-    assert!(config.spread);
+    assert_eq!(config.mode, DisplayMode::Mixed);
     assert_eq!(config.export_dir, Some(PathBuf::from("/tmp/mangania-out")));
     assert_eq!(config.export_name, "{book}_{page:03}");
     assert_eq!(config.prefetch, 4);
@@ -29,6 +38,7 @@ fn parses_all_config_fields() {
 #[test]
 fn uses_defaults_for_prefetch_and_cache() {
     let config = Config::default();
+    assert_eq!(config.mode, DisplayMode::Single);
     assert_eq!(config.prefetch, DEFAULT_PREFETCH);
     assert_eq!(config.cache_pages, DEFAULT_CACHE_PAGES);
     assert_eq!(config.cache_entries(), DEFAULT_CACHE_PAGES);
@@ -85,6 +95,7 @@ fn parses_every_scale_filter() {
 fn default_config_text_round_trips() {
     let text = Config::default().to_toml();
     assert!(text.contains("# MangaNia settings"));
+    assert!(text.contains("mode = \"single\""));
     assert!(text.contains("# export_dir"));
     assert_eq!(Config::parse(&text), Config::default());
 }
@@ -109,12 +120,15 @@ fn keeps_existing_config_file() {
     let dir = std::env::temp_dir().join(format!("mangania-config-existing-{}", std::process::id()));
     let path = dir.join("config.toml");
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(&path, "spread = true\n").unwrap();
+    std::fs::write(&path, "mode = \"spread\"\n").unwrap();
 
     let config = Config::load_or_create_from(&path);
 
-    assert!(config.spread);
-    assert_eq!(std::fs::read_to_string(&path).unwrap(), "spread = true\n");
+    assert_eq!(config.mode, DisplayMode::Spread);
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "mode = \"spread\"\n"
+    );
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -123,7 +137,7 @@ fn round_trips_config_file() {
     let dir = std::env::temp_dir().join(format!("mangania-config-{}", std::process::id()));
     let path = dir.join("config.toml");
     let config = Config {
-        spread: true,
+        mode: DisplayMode::Mixed,
         export_dir: Some(PathBuf::from("/tmp/mangania-out")),
         export_name: "{book}_{page:03}_{name}".to_string(),
         prefetch: 4,
@@ -149,12 +163,12 @@ fn saves_display_mode_and_preserves_other_settings() {
     let dir = std::env::temp_dir().join(format!("mangania-config-state-{}", std::process::id()));
     let path = dir.join("config.toml");
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(&path, "spread = false\nprefetch = 7\n").unwrap();
+    std::fs::write(&path, "mode = \"single\"\nprefetch = 7\n").unwrap();
     let mut config = Config::load_or_create_from(&path);
-    config.spread = true;
+    config.mode = DisplayMode::Mixed;
     config.save_to(&path).unwrap();
     let loaded = Config::load_or_create_from(&path);
-    assert!(loaded.spread);
+    assert_eq!(loaded.mode, DisplayMode::Mixed);
     assert_eq!(loaded.prefetch, 7);
     std::fs::remove_dir_all(dir).unwrap();
 }
@@ -164,10 +178,13 @@ fn invalid_files_are_not_overwritten() {
     let dir = std::env::temp_dir().join(format!("mangania-config-invalid-{}", std::process::id()));
     let path = dir.join("config.toml");
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(&path, "spread = invalid\n").unwrap();
+    std::fs::write(&path, "mode = \"invalid\"\n").unwrap();
     let config = Config::load_or_create_from(&path);
     assert_eq!(config, Config::default());
     assert!(config.save_to(&path).is_err());
-    assert_eq!(std::fs::read_to_string(path).unwrap(), "spread = invalid\n");
+    assert_eq!(
+        std::fs::read_to_string(path).unwrap(),
+        "mode = \"invalid\"\n"
+    );
     std::fs::remove_dir_all(dir).unwrap();
 }

@@ -60,10 +60,37 @@ impl ScaleFilter {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DisplayMode {
+    #[default]
+    Single,
+    Spread,
+    Mixed,
+}
+
+impl DisplayMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DisplayMode::Single => "single",
+            DisplayMode::Spread => "spread",
+            DisplayMode::Mixed => "mixed",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            DisplayMode::Single => "単ページ表示",
+            DisplayMode::Spread => "見開き表示",
+            DisplayMode::Mixed => "混合表示",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
-    pub spread: bool,
+    pub mode: DisplayMode,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub export_dir: Option<PathBuf>,
     pub export_name: String,
@@ -77,7 +104,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            spread: false,
+            mode: DisplayMode::Single,
             export_dir: None,
             export_name: DEFAULT_EXPORT_NAME.to_string(),
             prefetch: DEFAULT_PREFETCH,
@@ -142,10 +169,10 @@ impl Config {
     pub fn to_toml(&self) -> String {
         let mut text = String::from(concat!(
             "# MangaNia settings\n",
-            "# spread: false = 1ページ表示, true = 見開き表示\n",
+            "# mode: single = 単ページ表示, spread = 見開き表示, mixed = 混合表示\n",
             "# export_dir: 省略時は OS のピクチャフォルダ/MangaNia\n",
             "# export_name: {book}, {page}, {page:03}, {name} が使えます\n",
-            "# prefetch: 先読みする見開き数（単ページ表示ではページ数）\n",
+            "# prefetch: 先読みする段数（単ページ表示はページ数、見開き・混合表示は2ページ単位）\n",
             "# cache_pages: メモリに保持するページ数。0 は既定値\n",
             "# cache_mb: メモリキャッシュ上限（MiB）。0 は既定値\n",
             "# scale_filter: nearest / triangle / hamming / catmull_rom / mitchell / gaussian / lanczos3\n",

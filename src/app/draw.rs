@@ -18,7 +18,7 @@ impl App {
                 (size.width, size.height)
             })
             .unwrap_or((0, 0));
-        Viewport::new(width, height, self.config.scale_filter, self.config.spread)
+        Viewport::new(width, height, self.config.scale_filter, self.config.mode)
     }
 
     /// Updates the viewer when the window size, filter, or display mode
@@ -61,10 +61,11 @@ impl App {
             return;
         };
 
-        let (current, next, waiting_for_next) = self
+        let visible = self
             .viewer
             .as_ref()
-            .map_or((None, None, false), |viewer| viewer.visible_pages());
+            .map(|viewer| viewer.visible_pages())
+            .unwrap_or_default();
         let page = self
             .viewer
             .as_ref()
@@ -79,9 +80,9 @@ impl App {
             width,
             height,
             page,
-            current.is_some(),
-            next.is_some(),
-            waiting_for_next,
+            visible.current.is_some(),
+            visible.left.is_some(),
+            visible.waiting,
             cached
         ));
 
@@ -89,7 +90,7 @@ impl App {
             .viewer
             .as_ref()
             .is_some_and(|viewer| viewer.errors.contains_key(&viewer.current));
-        let state = frame_state(current.is_some(), current_failed, waiting_for_next);
+        let state = frame_state(visible.current.is_some(), current_failed, visible.waiting);
         if state == FrameState::Failed {
             view::blank(&mut buffer);
             self.last_frame.clear();
@@ -103,12 +104,12 @@ impl App {
             } else {
                 view::blank(&mut buffer);
             }
-        } else if current.is_some() {
+        } else if let Some(current) = visible.current.as_deref() {
             let start = std::time::Instant::now();
-            let pages: Vec<Option<&RgbaImage>> = if self.config.spread {
-                vec![next.as_deref(), current.as_deref()]
+            let pages: Vec<Option<&RgbaImage>> = if visible.spread {
+                vec![visible.left.as_deref(), Some(current)]
             } else {
-                vec![current.as_deref()]
+                vec![Some(current)]
             };
             view::render_pages(
                 &mut buffer,
