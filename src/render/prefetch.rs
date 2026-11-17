@@ -196,6 +196,26 @@ impl Drop for Prefetch {
     }
 }
 
+#[cfg(test)]
+impl Prefetch {
+    /// A prefetch that accepts jobs but never runs them, for tests that do not
+    /// exercise decoding.
+    pub(crate) fn idle() -> Self {
+        let (_sender, results) = mpsc::sync_channel(0);
+        Self {
+            shared: Arc::new(Shared {
+                queue: Mutex::new(Queue {
+                    jobs: VecDeque::new(),
+                    closed: false,
+                }),
+                ready: Condvar::new(),
+            }),
+            results,
+            in_flight: HashSet::new(),
+        }
+    }
+}
+
 fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
     if let Some(message) = payload.downcast_ref::<&str>() {
         (*message).to_string()

@@ -133,7 +133,7 @@ impl App {
             if let Some(message) = viewer.errors.get(&viewer.current) {
                 title.push_str(" - error: ");
                 title.extend(message.chars().take(120));
-            } else if !viewer.has_page(viewer.current) {
+            } else if viewer.is_loading() {
                 title.push_str(" - loading...");
             }
             if let Some(error) = &self.error {
