@@ -77,7 +77,7 @@ quit = ["Escape"]
 
 ```toml
 wheel_threshold = 50.0
-double_click_ms = 400
+double_click_ms = 500
 
 [bindings]
 next = ["left", "wheel_down"]
@@ -93,6 +93,8 @@ save_page = ["double_left"]
 - ダブルクリックが割り当てられたボタンは、シングルクリック動作を `double_click_ms` だけ遅延させる。
 - `wheel_threshold` はホイールで1ページ送りするために必要な移動量。
 - ダブルクリックの判定距離は 10px。
+- `double_click_ms` の既定は 500。
+- 既存の `mouse.toml` の `double_click_ms` は自動で変更されない。既定値に揃えるには 500 に編集するか、ファイルを削除して再生成する。
 
 ## 3. ファイルとディレクトリ
 

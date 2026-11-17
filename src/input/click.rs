@@ -133,7 +133,7 @@ save_page = []
         let now = Instant::now();
 
         assert!(clicks.press(MouseButton::Left, &mouse, now).is_empty());
-        assert_eq!(clicks.deadline(), Some(now + Duration::from_millis(400)));
+        assert_eq!(clicks.deadline(), Some(now + Duration::from_millis(500)));
         assert_eq!(clicks.flush(), Some(Action::Next));
         assert_eq!(clicks.deadline(), None);
     }
@@ -170,7 +170,7 @@ save_page = []
         let now = Instant::now();
 
         assert!(clicks.press(MouseButton::Left, &mouse, now).is_empty());
-        let actions = clicks.press(MouseButton::Left, &mouse, now + Duration::from_millis(401));
+        let actions = clicks.press(MouseButton::Left, &mouse, now + Duration::from_millis(501));
         assert_eq!(actions, vec![Action::Next]);
         assert!(clicks.deadline().is_some());
     }

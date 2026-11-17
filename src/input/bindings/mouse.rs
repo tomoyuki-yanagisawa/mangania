@@ -10,7 +10,7 @@ use super::{Action, load_bindings, resolve_bindings};
 
 pub const MOUSE_FILE: &str = "mouse.toml";
 pub const DEFAULT_WHEEL_THRESHOLD: f32 = 50.0;
-pub const DEFAULT_DOUBLE_CLICK_MS: u64 = 400;
+pub const DEFAULT_DOUBLE_CLICK_MS: u64 = 500;
 
 pub const DEFAULT_MOUSE: &str = r#"# MangaNia mouse bindings.
 # Buttons: left, right, middle, back, forward.
@@ -21,7 +21,7 @@ pub const DEFAULT_MOUSE: &str = r#"# MangaNia mouse bindings.
 # by double_click_ms so the two can be distinguished.
 
 wheel_threshold = 50.0
-double_click_ms = 400
+double_click_ms = 500
 
 [bindings]
 next = ["left", "wheel_down"]
