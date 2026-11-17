@@ -119,16 +119,6 @@ impl Orientation {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Layout {
-    /// One page in the middle of the window.
-    Single,
-    /// Two cells with the current page on the right; the left cell is blank.
-    BlankLeft,
-    /// Two cells with the next page on the left and the current page on the right.
-    Spread,
-}
-
 pub(crate) struct Viewer {
     pub(crate) file_name: String,
     pub(crate) path: PathBuf,
@@ -346,19 +336,23 @@ impl Viewer {
         self.orientations.get(&page).copied()
     }
 
-    fn layout(&self) -> Layout {
+    /// True when the current page is paired with the next page on screen.
+    fn shows_spread(&self) -> bool {
         let has_next = self.current + 1 < self.pages.len();
-        layout(
-            self.viewport.mode,
-            has_next,
-            self.orientation(self.current),
-            self.orientation(self.current + 1),
-        )
+        match self.viewport.mode {
+            DisplayMode::Single => false,
+            DisplayMode::Spread => has_next,
+            DisplayMode::Mixed => {
+                has_next
+                    && self.orientation(self.current) == Some(Orientation::Portrait)
+                    && self.orientation(self.current + 1) == Some(Orientation::Portrait)
+            }
+        }
     }
 
     /// Returns the page displayed together with the current page, if any.
     pub(crate) fn displayed_partner(&self) -> Option<usize> {
-        (self.layout() == Layout::Spread).then_some(self.current + 1)
+        self.shows_spread().then_some(self.current + 1)
     }
 
     /// 1-based page range shown in the title bar.
@@ -384,74 +378,56 @@ impl Viewer {
             return Frame::Loading;
         };
         let next = self.current + 1;
-        let has_next = next < self.pages.len();
         frame_for(
-            self.layout(),
+            self.viewport.mode,
+            next < self.pages.len(),
+            self.orientation(self.current),
+            self.orientation(next),
             right,
             self.cache.get(next),
-            !has_next || self.orientation(next).is_some(),
             self.errors.contains_key(&next),
         )
     }
 }
 
-/// Chooses the frame for `layout` once the current page image `right` is
-/// cached.
+/// Chooses the frame for `mode` once the current page image `right` is cached.
 ///
-/// `left` is the cached next page, `next_known` says whether no next page
-/// remains or its orientation is known, and `next_failed` says whether the next
-/// page failed to decode or to fit. A failed page ends the wait; a rejected
-/// prefetch does not, because the page is requested again when it is visible.
+/// `current` and `next` are the page orientations, `left` is the cached next
+/// page, and `next_failed` says whether the next page failed to decode or to
+/// fit. A failed page ends the wait; a rejected prefetch does not, because the
+/// page is requested again when it is visible.
 fn frame_for(
-    layout: Layout,
-    right: Arc<RgbaImage>,
-    left: Option<Arc<RgbaImage>>,
-    next_known: bool,
-    next_failed: bool,
-) -> Frame {
-    match layout {
-        Layout::Single => Frame::Single(right),
-        Layout::Spread => match left {
-            Some(left) => Frame::Spread { left, right },
-            None if next_failed => Frame::RightOnly(right),
-            None => Frame::Loading,
-        },
-        Layout::BlankLeft => {
-            if next_known || next_failed {
-                Frame::RightOnly(right)
-            } else {
-                // Mixed mode still has to learn whether the next page is
-                // portrait before the left cell can be left blank for good.
-                Frame::Loading
-            }
-        }
-    }
-}
-
-fn layout(
     mode: DisplayMode,
     has_next: bool,
     current: Option<Orientation>,
     next: Option<Orientation>,
-) -> Layout {
+    right: Arc<RgbaImage>,
+    left: Option<Arc<RgbaImage>>,
+    next_failed: bool,
+) -> Frame {
+    let next_known = !has_next || next.is_some();
     match mode {
-        DisplayMode::Single => Layout::Single,
-        DisplayMode::Spread => {
-            if has_next {
-                Layout::Spread
-            } else {
-                Layout::BlankLeft
-            }
+        DisplayMode::Single => Frame::Single(right),
+        DisplayMode::Spread if has_next => spread_frame(right, left, next_failed),
+        DisplayMode::Spread => Frame::RightOnly(right),
+        DisplayMode::Mixed if current != Some(Orientation::Portrait) => Frame::Single(right),
+        DisplayMode::Mixed if has_next && next == Some(Orientation::Portrait) => {
+            spread_frame(right, left, next_failed)
         }
-        DisplayMode::Mixed => {
-            if current != Some(Orientation::Portrait) {
-                Layout::Single
-            } else if has_next && next == Some(Orientation::Portrait) {
-                Layout::Spread
-            } else {
-                Layout::BlankLeft
-            }
-        }
+        DisplayMode::Mixed if next_known || next_failed => Frame::RightOnly(right),
+        // Mixed mode still has to learn whether the next page is portrait
+        // before the left cell can be left blank for good.
+        DisplayMode::Mixed => Frame::Loading,
+    }
+}
+
+/// Draws both cells of a spread when the left page is cached, and keeps the
+/// previous frame until it is available.
+fn spread_frame(right: Arc<RgbaImage>, left: Option<Arc<RgbaImage>>, next_failed: bool) -> Frame {
+    match left {
+        Some(left) => Frame::Spread { left, right },
+        None if next_failed => Frame::RightOnly(right),
+        None => Frame::Loading,
     }
 }
 
@@ -523,8 +499,8 @@ mod tests {
     use image::RgbaImage;
 
     use super::{
-        CacheLimits, Frame, Layout, Orientation, Prefetch, Viewer, Viewport, display_size,
-        frame_for, layout, prefetch_targets, step_mixed,
+        CacheLimits, Frame, Orientation, Prefetch, Viewer, Viewport, display_size, frame_for,
+        prefetch_targets, step_mixed,
     };
     use crate::archive::Page;
     use crate::config::{DisplayMode, ScaleFilter};
@@ -565,19 +541,48 @@ mod tests {
     }
 
     #[test]
+    fn frame_draws_a_single_page_in_single_mode() {
+        let right = portrait();
+
+        match frame_for(
+            DisplayMode::Single,
+            true,
+            Some(Orientation::Portrait),
+            Some(Orientation::Portrait),
+            right.clone(),
+            None,
+            false,
+        ) {
+            Frame::Single(image) => assert!(Arc::ptr_eq(&image, &right)),
+            _ => panic!("expected a single page"),
+        }
+    }
+
+    #[test]
     fn frame_waits_until_both_spread_pages_are_ready() {
         let right = portrait();
         let left = portrait();
+        let portrait = Some(Orientation::Portrait);
 
         assert!(matches!(
-            frame_for(Layout::Spread, right.clone(), None, true, false),
+            frame_for(
+                DisplayMode::Spread,
+                true,
+                portrait,
+                portrait,
+                right.clone(),
+                None,
+                false
+            ),
             Frame::Loading
         ));
         match frame_for(
-            Layout::Spread,
+            DisplayMode::Spread,
+            true,
+            portrait,
+            portrait,
             right.clone(),
             Some(left.clone()),
-            true,
             false,
         ) {
             Frame::Spread {
@@ -590,7 +595,101 @@ mod tests {
             _ => panic!("expected a spread"),
         }
         assert!(matches!(
-            frame_for(Layout::Spread, right.clone(), None, false, true),
+            frame_for(
+                DisplayMode::Spread,
+                true,
+                portrait,
+                portrait,
+                right.clone(),
+                None,
+                true
+            ),
+            Frame::RightOnly(image) if Arc::ptr_eq(&image, &right)
+        ));
+    }
+
+    #[test]
+    fn frame_uses_only_the_right_cell_on_the_last_page() {
+        let right = portrait();
+
+        assert!(matches!(
+            frame_for(
+                DisplayMode::Spread,
+                false,
+                Some(Orientation::Portrait),
+                None,
+                right.clone(),
+                None,
+                false
+            ),
+            Frame::RightOnly(image) if Arc::ptr_eq(&image, &right)
+        ));
+    }
+
+    #[test]
+    fn frame_shows_a_landscape_page_alone_in_mixed_mode() {
+        let right = portrait();
+
+        match frame_for(
+            DisplayMode::Mixed,
+            true,
+            Some(Orientation::Landscape),
+            Some(Orientation::Portrait),
+            right.clone(),
+            None,
+            false,
+        ) {
+            Frame::Single(image) => assert!(Arc::ptr_eq(&image, &right)),
+            _ => panic!("expected a single page"),
+        }
+    }
+
+    #[test]
+    fn frame_waits_for_a_mixed_portrait_pair() {
+        let right = portrait();
+        let left = portrait();
+        let portrait = Some(Orientation::Portrait);
+
+        assert!(matches!(
+            frame_for(
+                DisplayMode::Mixed,
+                true,
+                portrait,
+                portrait,
+                right.clone(),
+                None,
+                false
+            ),
+            Frame::Loading
+        ));
+        match frame_for(
+            DisplayMode::Mixed,
+            true,
+            portrait,
+            portrait,
+            right.clone(),
+            Some(left.clone()),
+            false,
+        ) {
+            Frame::Spread {
+                left: drawn_left,
+                right: drawn_right,
+            } => {
+                assert!(Arc::ptr_eq(&drawn_left, &left));
+                assert!(Arc::ptr_eq(&drawn_right, &right));
+            }
+            _ => panic!("expected a spread"),
+        }
+        assert!(matches!(
+            frame_for(
+                DisplayMode::Mixed,
+                true,
+                portrait,
+                portrait,
+                right.clone(),
+                None,
+                true
+            ),
             Frame::RightOnly(image) if Arc::ptr_eq(&image, &right)
         ));
     }
@@ -598,22 +697,55 @@ mod tests {
     #[test]
     fn frame_waits_for_an_unknown_mixed_neighbour() {
         let right = portrait();
+        let portrait = Some(Orientation::Portrait);
 
         assert!(matches!(
-            frame_for(Layout::BlankLeft, right.clone(), None, false, false),
+            frame_for(
+                DisplayMode::Mixed,
+                true,
+                portrait,
+                None,
+                right.clone(),
+                None,
+                false
+            ),
             Frame::Loading
         ));
         assert!(matches!(
-            frame_for(Layout::BlankLeft, right.clone(), None, true, false),
-            Frame::RightOnly(_)
+            frame_for(
+                DisplayMode::Mixed,
+                true,
+                portrait,
+                Some(Orientation::Landscape),
+                right.clone(),
+                None,
+                false
+            ),
+            Frame::RightOnly(image) if Arc::ptr_eq(&image, &right)
         ));
         assert!(matches!(
-            frame_for(Layout::BlankLeft, right.clone(), None, false, true),
-            Frame::RightOnly(_)
+            frame_for(
+                DisplayMode::Mixed,
+                false,
+                portrait,
+                None,
+                right.clone(),
+                None,
+                false
+            ),
+            Frame::RightOnly(image) if Arc::ptr_eq(&image, &right)
         ));
         assert!(matches!(
-            frame_for(Layout::Single, right, None, false, false),
-            Frame::Single(_)
+            frame_for(
+                DisplayMode::Mixed,
+                true,
+                portrait,
+                None,
+                right.clone(),
+                None,
+                true
+            ),
+            Frame::RightOnly(image) if Arc::ptr_eq(&image, &right)
         ));
     }
 
@@ -705,27 +837,29 @@ mod tests {
     }
 
     #[test]
-    fn mixed_layout_uses_the_current_and_next_orientations() {
-        let portrait = Some(Orientation::Portrait);
-        let landscape = Some(Orientation::Landscape);
+    fn displayed_partner_follows_the_shown_spread() {
+        let mut spread = test_viewer(DisplayMode::Spread, 2);
+        spread.orientations.insert(0, Orientation::Portrait);
+        spread.orientations.insert(1, Orientation::Portrait);
+        assert_eq!(spread.displayed_partner(), Some(1));
+        assert_eq!(spread.page_range(), (1, 2));
 
         assert_eq!(
-            layout(DisplayMode::Mixed, true, landscape, portrait),
-            Layout::Single
+            test_viewer(DisplayMode::Single, 2).displayed_partner(),
+            None
         );
         assert_eq!(
-            layout(DisplayMode::Mixed, true, portrait, portrait),
-            Layout::Spread
+            test_viewer(DisplayMode::Spread, 1).displayed_partner(),
+            None
         );
-        assert_eq!(
-            layout(DisplayMode::Mixed, true, portrait, landscape),
-            Layout::BlankLeft
-        );
-        assert_eq!(
-            layout(DisplayMode::Mixed, false, portrait, None),
-            Layout::BlankLeft
-        );
-        assert_eq!(layout(DisplayMode::Mixed, true, None, None), Layout::Single);
+
+        let mut mixed = test_viewer(DisplayMode::Mixed, 2);
+        mixed.orientations.insert(0, Orientation::Portrait);
+        mixed.orientations.insert(1, Orientation::Landscape);
+        assert_eq!(mixed.displayed_partner(), None);
+
+        mixed.orientations.insert(1, Orientation::Portrait);
+        assert_eq!(mixed.displayed_partner(), Some(1));
     }
 
     #[test]
@@ -743,22 +877,5 @@ mod tests {
         assert_eq!(step_mixed(4, 6, -1, is_portrait), Some(3));
         assert_eq!(step_mixed(5, 6, -1, is_portrait), Some(3));
         assert_eq!(step_mixed(0, 6, -1, is_portrait), Some(0));
-    }
-
-    #[test]
-    fn single_and_spread_layouts_ignore_orientation() {
-        let portrait = Some(Orientation::Portrait);
-        assert_eq!(
-            layout(DisplayMode::Single, true, portrait, portrait),
-            Layout::Single
-        );
-        assert_eq!(
-            layout(DisplayMode::Spread, true, portrait, portrait),
-            Layout::Spread
-        );
-        assert_eq!(
-            layout(DisplayMode::Spread, false, portrait, None),
-            Layout::BlankLeft
-        );
     }
 }
