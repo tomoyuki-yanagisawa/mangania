@@ -65,14 +65,34 @@ pub(crate) struct CacheLimits {
 }
 
 /// Page images to draw for the current position.
-#[derive(Default)]
-pub(crate) struct Visible {
-    pub(crate) left: Option<Arc<RgbaImage>>,
-    pub(crate) current: Option<Arc<RgbaImage>>,
-    /// True when the current page uses a left/right cell layout.
-    pub(crate) spread: bool,
-    /// True while a page needed for the layout is still loading.
-    pub(crate) waiting: bool,
+///
+/// The variants make an accidental blank left cell impossible: a spread is
+/// only drawn with both images, and a blank left cell is drawn only when it is
+/// intentional.
+pub(crate) enum Visible {
+    /// A page needed for the display is still loading.
+    Waiting,
+    /// One page fills the window.
+    Single(Arc<RgbaImage>),
+    /// Both cells of a spread are ready.
+    Spread {
+        left: Arc<RgbaImage>,
+        right: Arc<RgbaImage>,
+    },
+    /// Only the right cell is used; the left cell is intentionally blank.
+    RightOnly(Arc<RgbaImage>),
+}
+
+impl Visible {
+    /// Short name for the draw debug log.
+    pub(crate) fn kind(&self) -> &'static str {
+        match self {
+            Self::Waiting => "waiting",
+            Self::Single(_) => "single",
+            Self::Spread { .. } => "spread",
+            Self::RightOnly(_) => "right-only",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,6 +121,15 @@ enum Layout {
     Spread,
 }
 
+/// Display chosen for a layout after checking the cache and errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Display {
+    Waiting,
+    Single,
+    Spread,
+    RightOnly,
+}
+
 pub(crate) struct Viewer {
     pub(crate) file_name: String,
     pub(crate) path: PathBuf,
@@ -112,10 +141,11 @@ pub(crate) struct Viewer {
     /// Page orientation, recorded when the page is decoded. It survives cache
     /// clears because it does not depend on the window size or display mode.
     orientations: HashMap<usize, Orientation>,
-    /// Pages whose decoded image could not be kept in the cache. Prefetch
+    /// Pages whose decoded image could not be kept in the cache. Prefetching
     /// skips them so it does not decode the same page in a loop. Pages that
-    /// were cached and later evicted are not listed, so a later prefetch can
-    /// request them again.
+    /// are on screen are still requested when missing, even after a rejection.
+    /// Pages that were cached and later evicted are not listed, so a later
+    /// prefetch can request them again.
     rejected: HashSet<usize>,
     depth: usize,
     viewport: Viewport,
@@ -216,6 +246,9 @@ impl Viewer {
         // Ask for the whole spread at once. Requesting the pages separately
         // would make the second urgent request discard the first one. Mixed
         // mode also needs the next page to know whether it can be paired.
+        // Visible pages are requested again even if prefetch rejected them
+        // earlier: a rejection only prevents repeated prefetches of pages that
+        // are not on screen.
         let jobs = pages
             .into_iter()
             .filter(|&page| self.needs_request(page))
@@ -243,10 +276,6 @@ impl Viewer {
         page < self.pages.len() && !self.has_page(page) && !self.errors.contains_key(&page)
     }
 
-    fn pending(&self, page: usize) -> bool {
-        self.needs_request(page) && !self.rejected.contains(&page)
-    }
-
     fn request(&mut self, page: usize) {
         if !self.needs_request(page) || self.rejected.contains(&page) {
             return;
@@ -267,13 +296,19 @@ impl Viewer {
         let (cell_width, cell_height) = display_size(self.viewport, orientation);
         let target = view::fit(width, height, cell_width as usize, cell_height as usize);
         if target.0 == 0 || target.1 == 0 {
-            self.rejected.insert(page);
+            // A page that cannot be fitted will never be displayable. Record
+            // it as an error so waiting does not retry it forever.
             debug_log::log(format_args!(
-                "viewer: skip empty display page={} source={}x{}",
+                "viewer: page={} source={}x{} cannot be fitted for display",
                 page + 1,
                 width,
                 height
             ));
+            self.rejected.remove(&page);
+            self.errors.insert(
+                page,
+                format!("cannot fit {width}x{height} page for display"),
+            );
             return;
         }
 
@@ -332,39 +367,64 @@ impl Viewer {
         (start, end)
     }
 
-    /// Returns the images to draw and whether a needed page is still loading.
+    /// True while the current display is waiting for a page image.
+    pub(crate) fn is_loading(&self) -> bool {
+        matches!(self.visible_pages(), Visible::Waiting)
+    }
+
+    /// Returns the images to draw. A spread stays `Waiting` until both pages
+    /// are cached, so the previous frame remains on screen instead of showing
+    /// a right-only frame that gains a left page a moment later.
     pub(crate) fn visible_pages(&self) -> Visible {
         let Some(current) = self.cache.get(self.current) else {
-            return Visible::default();
+            return Visible::Waiting;
         };
         let next = self.current + 1;
-        let next_orientation = self.orientation(next);
-        match self.layout() {
-            Layout::Single => Visible {
-                current: Some(current),
-                ..Visible::default()
-            },
-            Layout::Spread => {
-                let left = self.cache.get(next);
-                let waiting = left.is_none() && self.pending(next);
-                Visible {
+        let has_next = next < self.pages.len();
+        let left = self.cache.get(next);
+        let next_known = !has_next || self.orientation(next).is_some();
+        let next_failed = self.errors.contains_key(&next);
+        match display(self.layout(), left.is_some(), next_known, next_failed) {
+            Display::Waiting => Visible::Waiting,
+            Display::Single => Visible::Single(current),
+            Display::Spread => match left {
+                Some(left) => Visible::Spread {
                     left,
-                    current: Some(current),
-                    spread: true,
-                    waiting,
-                }
+                    right: current,
+                },
+                None => Visible::Waiting,
+            },
+            Display::RightOnly => Visible::RightOnly(current),
+        }
+    }
+}
+
+/// Chooses what to draw for `layout` once the current page is cached.
+///
+/// `left_ready` says whether the left image is cached, `next_known` whether no
+/// next page remains or its orientation is known, and `next_failed` whether the
+/// next page failed to decode or to fit. A failed page ends the wait; a
+/// rejected prefetch does not, because the page is requested again when it is
+/// visible.
+fn display(layout: Layout, left_ready: bool, next_known: bool, next_failed: bool) -> Display {
+    match layout {
+        Layout::Single => Display::Single,
+        Layout::Spread => {
+            if left_ready {
+                Display::Spread
+            } else if next_failed {
+                Display::RightOnly
+            } else {
+                Display::Waiting
             }
-            Layout::BlankLeft => {
-                // Wait for the next page's orientation before drawing a
-                // portrait page alone, so the left cell does not switch from
-                // blank to an image after the frame appears.
-                let waiting = next_orientation.is_none() && self.pending(next);
-                Visible {
-                    current: Some(current),
-                    spread: true,
-                    waiting,
-                    ..Visible::default()
-                }
+        }
+        Layout::BlankLeft => {
+            if next_known || next_failed {
+                Display::RightOnly
+            } else {
+                // Mixed mode still has to learn whether the next page is
+                // portrait before the left cell can be left blank for good.
+                Display::Waiting
             }
         }
     }
@@ -459,11 +519,42 @@ fn prefetch_targets(current: usize, len: usize, depth: usize, mode: DisplayMode)
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    use image::RgbaImage;
+
     use super::{
-        FrameState, Layout, Orientation, Viewport, display_size, frame_state, layout,
-        prefetch_targets, step_mixed,
+        CacheLimits, Display, FrameState, Layout, Orientation, Prefetch, Viewer, Viewport, Visible,
+        display, display_size, frame_state, layout, prefetch_targets, step_mixed,
     };
+    use crate::archive::Page;
     use crate::config::{DisplayMode, ScaleFilter};
+
+    fn test_viewer(mode: DisplayMode, pages: usize) -> Viewer {
+        let pages = (0..pages)
+            .map(|entry| Page {
+                name: format!("{entry}.png"),
+                entry,
+            })
+            .collect();
+        Viewer::new(
+            "test.zip".to_string(),
+            PathBuf::from("test.zip"),
+            pages,
+            Prefetch::idle(),
+            1,
+            CacheLimits {
+                entries: 8,
+                bytes: usize::MAX,
+            },
+            Viewport::new(1200, 900, ScaleFilter::Triangle, mode),
+        )
+    }
+
+    fn portrait() -> Arc<RgbaImage> {
+        Arc::new(RgbaImage::new(600, 900))
+    }
 
     #[test]
     fn failed_pages_do_not_keep_the_previous_frame() {
@@ -471,6 +562,81 @@ mod tests {
         assert_eq!(frame_state(false, false, false), FrameState::Loading);
         assert_eq!(frame_state(true, false, true), FrameState::Loading);
         assert_eq!(frame_state(true, false, false), FrameState::Ready);
+    }
+
+    #[test]
+    fn display_waits_until_both_spread_pages_are_ready() {
+        assert_eq!(
+            display(Layout::Spread, false, true, false),
+            Display::Waiting
+        );
+        assert_eq!(display(Layout::Spread, true, true, false), Display::Spread);
+        assert_eq!(
+            display(Layout::Spread, false, false, true),
+            Display::RightOnly
+        );
+    }
+
+    #[test]
+    fn display_waits_for_an_unknown_mixed_neighbour() {
+        assert_eq!(
+            display(Layout::BlankLeft, false, false, false),
+            Display::Waiting
+        );
+        assert_eq!(
+            display(Layout::BlankLeft, false, true, false),
+            Display::RightOnly
+        );
+        assert_eq!(
+            display(Layout::BlankLeft, false, false, true),
+            Display::RightOnly
+        );
+        assert_eq!(
+            display(Layout::Single, false, false, false),
+            Display::Single
+        );
+    }
+
+    #[test]
+    fn loading_follows_the_display_state() {
+        let mut viewer = test_viewer(DisplayMode::Spread, 4);
+        assert!(viewer.is_loading());
+
+        viewer.insert_decoded(0, portrait());
+        assert!(viewer.is_loading());
+
+        viewer.insert_decoded(1, portrait());
+        assert!(!viewer.is_loading());
+    }
+
+    #[test]
+    fn rejected_left_page_still_waits_for_its_image() {
+        let mut viewer = test_viewer(DisplayMode::Spread, 4);
+        viewer.insert_decoded(0, portrait());
+        viewer.rejected.insert(1);
+
+        assert!(matches!(viewer.visible_pages(), Visible::Waiting));
+
+        viewer.errors.insert(1, "failed".to_string());
+        assert!(matches!(viewer.visible_pages(), Visible::RightOnly(_)));
+    }
+
+    #[test]
+    fn empty_fitted_page_ends_in_errors_not_rejections() {
+        let mut viewer = test_viewer(DisplayMode::Spread, 4);
+        viewer.insert_decoded(0, Arc::new(RgbaImage::new(0, 0)));
+
+        assert!(viewer.errors.contains_key(&0));
+        assert!(!viewer.rejected.contains(&0));
+        assert!(!viewer.needs_request(0));
+    }
+
+    #[test]
+    fn last_spread_page_uses_only_the_right_cell() {
+        let mut viewer = test_viewer(DisplayMode::Spread, 1);
+        viewer.insert_decoded(0, portrait());
+
+        assert!(matches!(viewer.visible_pages(), Visible::RightOnly(_)));
     }
 
     #[test]

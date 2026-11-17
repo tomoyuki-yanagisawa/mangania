@@ -4,7 +4,7 @@ use image::RgbaImage;
 
 use crate::debug_log;
 use crate::render::view;
-use crate::render::viewer::{FrameState, Viewport, frame_state};
+use crate::render::viewer::{FrameState, Viewport, Visible, frame_state};
 
 use super::App;
 
@@ -23,7 +23,8 @@ impl App {
 
     /// Updates the viewer when the window size, filter, or display mode
     /// changed. The page cache is cleared so images are decoded again for the
-    /// new target.
+    /// new target. The previous frame stays on screen until the new images are
+    /// ready.
     pub(super) fn sync_viewport(&mut self) -> bool {
         let viewport = self.viewport();
         if viewport.is_empty() {
@@ -32,11 +33,7 @@ impl App {
         let Some(viewer) = self.viewer.as_mut() else {
             return false;
         };
-        let changed = viewer.set_viewport(viewport);
-        if changed {
-            self.last_frame.clear();
-        }
-        changed
+        viewer.set_viewport(viewport)
     }
 
     pub(super) fn draw(&mut self) {
@@ -65,7 +62,7 @@ impl App {
             .viewer
             .as_ref()
             .map(|viewer| viewer.visible_pages())
-            .unwrap_or_default();
+            .unwrap_or(Visible::Waiting);
         let page = self
             .viewer
             .as_ref()
@@ -76,13 +73,11 @@ impl App {
             .as_ref()
             .is_some_and(|viewer| viewer.has_page(viewer.current));
         debug_log::log(format_args!(
-            "draw: {}x{} page={} current={} next={} waiting={} cached={}",
+            "draw: {}x{} page={} display={} cached={}",
             width,
             height,
             page,
-            visible.current.is_some(),
-            visible.left.is_some(),
-            visible.waiting,
+            visible.kind(),
             cached
         ));
 
@@ -90,7 +85,8 @@ impl App {
             .viewer
             .as_ref()
             .is_some_and(|viewer| viewer.errors.contains_key(&viewer.current));
-        let state = frame_state(visible.current.is_some(), current_failed, visible.waiting);
+        let waiting = matches!(visible, Visible::Waiting);
+        let state = frame_state(!waiting, current_failed, waiting);
         if state == FrameState::Failed {
             view::blank(&mut buffer);
             self.last_frame.clear();
@@ -104,18 +100,21 @@ impl App {
             } else {
                 view::blank(&mut buffer);
             }
-        } else if let Some(current) = visible.current.as_deref() {
+        } else {
             let start = std::time::Instant::now();
-            let pages: Vec<Option<&RgbaImage>> = if visible.spread {
-                vec![visible.left.as_deref(), Some(current)]
-            } else {
-                vec![Some(current)]
+            let cells: Vec<Option<&RgbaImage>> = match &visible {
+                Visible::Waiting => Vec::new(),
+                Visible::Single(image) => vec![Some(image.as_ref())],
+                Visible::Spread { left, right } => {
+                    vec![Some(left.as_ref()), Some(right.as_ref())]
+                }
+                Visible::RightOnly(right) => vec![None, Some(right.as_ref())],
             };
             view::render_pages(
                 &mut buffer,
                 size.width as usize,
                 size.height as usize,
-                &pages,
+                &cells,
             );
 
             self.last_frame.resize(buffer.len(), 0);
