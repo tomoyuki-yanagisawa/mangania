@@ -6,11 +6,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
 
-use image::RgbaImage;
-
-use crate::archive::{Archive, EntryInfo};
+use crate::archive::{Archive, EntryInfo, Page};
 use crate::debug_log;
-use crate::decode;
 
 const TEMP_PREFIX: &str = ".mangania-tmp-";
 
@@ -23,6 +20,12 @@ static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 /// explicit `clear` action.
 pub struct DiskCache {
     directory: PathBuf,
+}
+
+/// A page file on disk. `cached` is true when it lives in the disk cache.
+pub struct PageFile {
+    pub path: PathBuf,
+    pub cached: bool,
 }
 
 impl Default for DiskCache {
@@ -38,6 +41,21 @@ impl DiskCache {
 
     pub fn directory(&self) -> &Path {
         &self.directory
+    }
+
+    /// Returns the local file for a page.
+    ///
+    /// ZIP entries are extracted to the cache first; directory pages are used
+    /// in place.
+    pub fn page_path(&self, archive: &mut Archive, page: &Page) -> Result<PageFile, String> {
+        if let Some(root) = archive.directory_root() {
+            return Ok(PageFile {
+                path: root.join(&page.name),
+                cached: false,
+            });
+        }
+        let path = self.source(archive, page.entry, &page.name)?;
+        Ok(PageFile { path, cached: true })
     }
 
     /// Returns the cached file for an archive entry, extracting it on a miss.
@@ -73,26 +91,18 @@ impl DiskCache {
         Ok(path)
     }
 
-    /// Decodes an archive entry from the cached file. A broken cache file is
-    /// removed and reported; the next read re-extracts it.
-    pub fn decode(
-        &self,
-        archive: &mut Archive,
-        entry: usize,
-        name: &str,
-    ) -> Result<RgbaImage, String> {
-        let path = self.source(archive, entry, name)?;
-        match decode::decode_file(&path) {
-            Ok(image) => Ok(image),
-            Err(error) => {
-                let _ = fs::remove_file(&path);
-                let message = format!(
-                    "entry {entry}: cached image is unreadable ({}): {error}",
-                    path.display()
-                );
-                debug_log::log(format_args!("disk cache: {message}"));
-                Err(message)
-            }
+    /// Removes a cached file that could not be decoded.
+    pub fn discard(&self, path: &Path) {
+        match fs::remove_file(path) {
+            Ok(()) => debug_log::log(format_args!(
+                "disk cache: discarded unreadable {}",
+                path.display()
+            )),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => debug_log::log(format_args!(
+                "disk cache: remove {}: {error}",
+                path.display()
+            )),
         }
     }
 

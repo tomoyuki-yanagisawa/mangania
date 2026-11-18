@@ -25,6 +25,7 @@ const SHELL_LINK_HEADER: &[u8] = &[
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
     Zip,
+    Directory,
     Unsupported,
     Broken,
     ShellLink,
@@ -34,6 +35,7 @@ impl std::fmt::Display for Format {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::Zip => "ZIP",
+            Self::Directory => "image directory",
             Self::Unsupported => "unsupported format",
             Self::Broken => "broken or unreadable file",
             Self::ShellLink => "Windows shortcut",
@@ -52,14 +54,18 @@ pub struct Entry {
 }
 
 impl Entry {
-    /// Resolves a shortcut, detects the file format, and opens a ZIP archive.
+    /// Resolves a shortcut and opens a ZIP archive or image directory.
     ///
-    /// ZIP is the only supported container. RAR/CBR, 7z, HTML, empty, truncated,
-    /// and unknown files get a format-specific error instead of a raw EOCD
-    /// failure.
+    /// RAR/CBR, 7z, HTML, empty, truncated, and unknown files get a
+    /// format-specific error instead of a raw EOCD failure.
     pub fn open(path: &Path) -> Result<Self, String> {
         let mut path = path.to_path_buf();
         for _ in 0..MAX_SHORTCUT_DEPTH {
+            if path.is_dir() {
+                let archive = Archive::open_directory(&path)
+                    .map_err(|error| format!("{}: {error}", path.display()))?;
+                return Ok(Self { path, archive });
+            }
             let probe = probe(&path)?;
             if probe.format != Format::ShellLink {
                 return Self::from_probe(path, probe);
@@ -126,6 +132,9 @@ fn probe(path: &Path) -> Result<Probe, String> {
 /// `Unknown` can still be a ZIP with leading data; [`Entry::open`] tries the
 /// ZIP parser before returning a format error.
 pub fn detect(path: &Path) -> Format {
+    if path.is_dir() {
+        return Format::Directory;
+    }
     probe(path)
         .map(|probe| probe.format)
         .unwrap_or(Format::Broken)
@@ -198,8 +207,11 @@ fn open_error(path: &Path, format: Format, len: u64, error: &str) -> String {
     let path = path.display();
     match format {
         Format::Unsupported => {
-            format!("{path}: unsupported file format; MangaNia reads ZIP/CBZ archives")
+            format!(
+                "{path}: unsupported file format; MangaNia reads ZIP/CBZ archives and image directories"
+            )
         }
+        Format::Directory => format!("{path}: cannot open image directory: {error}"),
         Format::Broken | Format::Zip => {
             format!("{path}: broken or unreadable archive ({len} bytes): {error}")
         }

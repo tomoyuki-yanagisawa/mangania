@@ -1,19 +1,21 @@
 mod common;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use mangania::archive::Archive;
-use mangania::storage::disk_cache::DiskCache;
+use mangania::render::decode::decode_page;
+use mangania::storage::disk_cache::{DiskCache, PageFile};
 
 fn cache_for(archive_path: &Path) -> DiskCache {
     DiskCache::new(archive_path.parent().unwrap().join("cache"))
 }
 
-fn source(
-    cache: &DiskCache,
-    archive: &mut Archive,
-    page: usize,
-) -> Result<std::path::PathBuf, String> {
+fn page_file(cache: &DiskCache, archive: &mut Archive, page: usize) -> PageFile {
+    let page = archive.pages[page].clone();
+    cache.page_path(archive, &page).unwrap()
+}
+
+fn source(cache: &DiskCache, archive: &mut Archive, page: usize) -> Result<PathBuf, String> {
     let page = archive.pages[page].clone();
     cache.source(archive, page.entry, &page.name)
 }
@@ -24,10 +26,11 @@ fn decode(
     page: usize,
 ) -> Result<image::RgbaImage, String> {
     let page = archive.pages[page].clone();
-    cache.decode(archive, page.entry, &page.name)
+    let file = cache.page_path(archive, &page)?;
+    decode_page(cache, &file)
 }
 
-fn cache_files(directory: &Path) -> Vec<std::path::PathBuf> {
+fn cache_files(directory: &Path) -> Vec<PathBuf> {
     let mut files: Vec<_> = std::fs::read_dir(directory)
         .unwrap()
         .map(|entry| entry.unwrap().path())
@@ -44,16 +47,18 @@ fn extracts_on_miss_and_reuses_on_hit() {
     let cache = cache_for(&path);
     let mut archive = Archive::open(&path).unwrap();
 
-    let first = source(&cache, &mut archive, 0).unwrap();
-    assert!(first.starts_with(cache.directory()));
-    assert_eq!(std::fs::read(&first).unwrap(), image);
+    let first = page_file(&cache, &mut archive, 0);
+    assert!(first.cached);
+    assert!(first.path.starts_with(cache.directory()));
+    assert_eq!(std::fs::read(&first.path).unwrap(), image);
     assert_eq!(
         decode(&cache, &mut archive, 0).unwrap().dimensions(),
         (4, 3)
     );
 
-    let second = source(&cache, &mut archive, 0).unwrap();
-    assert_eq!(first, second);
+    let second = page_file(&cache, &mut archive, 0);
+    assert!(second.cached);
+    assert_eq!(first.path, second.path);
     let files = cache_files(cache.directory());
     assert_eq!(files.len(), 1);
     assert!(!files[0].to_string_lossy().contains(".tmp"));
@@ -120,18 +125,19 @@ fn corrupt_cached_file_is_removed_and_rebuilt_on_next_read() {
     let cache = cache_for(&path);
     let mut archive = Archive::open(&path).unwrap();
 
-    let cached = source(&cache, &mut archive, 0).unwrap();
-    let mut bytes = std::fs::read(&cached).unwrap();
+    let cached = page_file(&cache, &mut archive, 0);
+    assert!(cached.cached);
+    let mut bytes = std::fs::read(&cached.path).unwrap();
     bytes[0] ^= 0xff;
-    std::fs::write(&cached, bytes).unwrap();
+    std::fs::write(&cached.path, bytes).unwrap();
 
-    let error = decode(&cache, &mut archive, 0).unwrap_err();
+    let error = decode_page(&cache, &cached).unwrap_err();
     assert!(error.contains("unreadable"), "unexpected error: {error}");
-    assert!(!cached.exists());
+    assert!(!cached.path.exists());
 
     let decoded = decode(&cache, &mut archive, 0).unwrap();
     assert_eq!(decoded.dimensions(), (4, 3));
-    assert_eq!(std::fs::read(&cached).unwrap(), image);
+    assert_eq!(std::fs::read(&cached.path).unwrap(), image);
 
     common::cleanup(&path);
 }
@@ -163,4 +169,24 @@ fn undecodable_entry_reports_an_error() {
     assert!(error.contains("unreadable"), "unexpected error: {error}");
 
     common::cleanup(&path);
+}
+
+#[test]
+fn directory_pages_are_read_in_place_and_kept_when_undecodable() {
+    let directory = common::temp_dir();
+    let image = directory.join("1.png");
+    std::fs::write(&image, b"not an image").unwrap();
+    let cache = DiskCache::new(directory.join("cache"));
+    let mut archive = Archive::open_directory(&directory).unwrap();
+
+    let file = page_file(&cache, &mut archive, 0);
+    assert!(!file.cached);
+    assert_eq!(file.path, image);
+    assert!(!cache.directory().exists());
+
+    let error = decode_page(&cache, &file).unwrap_err();
+    assert!(!error.contains("unreadable"), "unexpected error: {error}");
+    assert!(image.exists());
+
+    std::fs::remove_dir_all(&directory).unwrap();
 }

@@ -72,6 +72,28 @@ fn saves_original_bmp_bytes_and_extension() {
 }
 
 #[test]
+fn saves_a_page_from_an_image_directory() {
+    let image = common::png();
+    let root = common::temp_dir();
+    let archive_path = root.join("book.v2");
+    std::fs::create_dir(&archive_path).unwrap();
+    std::fs::write(archive_path.join("001.png"), &image).unwrap();
+    let out_dir = root.join("out");
+    let config = Config {
+        export_dir: Some(out_dir.clone()),
+        export_name: "{book}_{page:03}_{name}".to_string(),
+        ..Config::default()
+    };
+
+    let cache = DiskCache::new(root.join("cache"));
+    let output = export::save_current_page(&archive_path, 0, &config, &cache).unwrap();
+
+    assert_eq!(output, out_dir.join("book.v2_001_001.png"));
+    assert_eq!(std::fs::read(&output).unwrap(), image);
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
 fn saves_sorted_page_with_matching_name_and_bytes() {
     let archive_path = common::temp_zip(&[
         ("10.jpg", b"ten"),

@@ -28,7 +28,7 @@ pub fn temp_file(name: &str, bytes: &[u8]) -> PathBuf {
     path
 }
 
-fn temp_dir() -> PathBuf {
+pub fn temp_dir() -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
         "mangania-test-{}-{}",
         std::process::id(),

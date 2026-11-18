@@ -6,8 +6,9 @@ use std::time::Instant;
 
 use image::RgbaImage;
 
-use crate::archive::Archive;
+use crate::archive::{Archive, Page};
 use crate::debug_log;
+use crate::render::decode::decode_page;
 use crate::storage::disk_cache::DiskCache;
 
 struct Job {
@@ -72,7 +73,12 @@ impl Prefetch {
                     job.entry
                 ));
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let image = cache.decode(&mut archive, job.entry, &job.name)?;
+                    let page = Page {
+                        name: job.name.clone(),
+                        entry: job.entry,
+                    };
+                    let file = cache.page_path(&mut archive, &page)?;
+                    let image = decode_page(&cache, &file)?;
                     debug_log::log(format_args!(
                         "job decode: page={} {}x{} in {:.1}ms",
                         job.page + 1,

@@ -186,3 +186,64 @@ fn reports_unknown_files() {
 
     common::cleanup(&path);
 }
+
+#[test]
+fn opens_only_direct_image_files_in_a_directory() {
+    let directory = common::temp_dir();
+    std::fs::write(directory.join("10.jpg"), b"ten").unwrap();
+    std::fs::write(directory.join("2.jpg"), b"two").unwrap();
+    std::fs::write(directory.join(".hidden.jpg"), b"hidden").unwrap();
+    std::fs::write(directory.join("notes.txt"), b"notes").unwrap();
+    std::fs::create_dir(directory.join("sub")).unwrap();
+    std::fs::write(directory.join("sub").join("1.png"), b"sub").unwrap();
+
+    assert_eq!(open::detect(&directory), Format::Directory);
+
+    let entry = Entry::open(&directory).unwrap();
+    assert_eq!(entry.path, directory);
+    let names: Vec<&str> = entry
+        .pages()
+        .iter()
+        .map(|page| page.name.as_str())
+        .collect();
+    assert_eq!(names, ["2.jpg", "10.jpg"]);
+
+    std::fs::remove_dir_all(&directory).unwrap();
+}
+
+#[test]
+fn reports_a_directory_without_images() {
+    let directory = common::temp_dir();
+    std::fs::write(directory.join("notes.txt"), b"notes").unwrap();
+
+    assert_eq!(open::detect(&directory), Format::Directory);
+
+    let error = open_error(&directory);
+    assert!(
+        error.contains("no supported images"),
+        "unexpected error: {error}"
+    );
+
+    std::fs::remove_dir_all(&directory).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn ignores_symlinks_in_a_directory() {
+    use std::os::unix::fs::symlink;
+
+    let directory = common::temp_dir();
+    let image = directory.join("1.jpg");
+    std::fs::write(&image, b"one").unwrap();
+    symlink(&image, directory.join("2.jpg")).unwrap();
+
+    let entry = Entry::open(&directory).unwrap();
+    let names: Vec<&str> = entry
+        .pages()
+        .iter()
+        .map(|page| page.name.as_str())
+        .collect();
+    assert_eq!(names, ["1.jpg"]);
+
+    std::fs::remove_dir_all(&directory).unwrap();
+}

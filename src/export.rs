@@ -17,12 +17,14 @@ pub fn save_current_page(
         .ok_or_else(|| "page out of range".to_string())?;
     let entry_name = page_info.name.as_str();
 
-    let book = entry
-        .path
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .unwrap_or("book")
-        .to_string();
+    let book = if entry.path.is_dir() {
+        entry.path.file_name()
+    } else {
+        entry.path.file_stem()
+    }
+    .and_then(|value| value.to_str())
+    .unwrap_or("book")
+    .to_string();
     let name = Path::new(entry_name)
         .file_stem()
         .and_then(|value| value.to_str())
@@ -42,7 +44,7 @@ pub fn save_current_page(
     std::fs::create_dir_all(&directory)
         .map_err(|error| format!("create {}: {error}", directory.display()))?;
     let output = directory.join(format!("{stem}.{extension}"));
-    let source = cache.source(&mut entry.archive, page_info.entry, &page_info.name)?;
+    let source = cache.page_path(&mut entry.archive, &page_info)?.path;
     if let Err(error) = std::fs::copy(&source, &output) {
         let _ = std::fs::remove_file(&output);
         return Err(format!(
