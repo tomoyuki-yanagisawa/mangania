@@ -1,4 +1,3 @@
-pub mod decoder;
 pub mod open;
 
 use std::cmp::Ordering;

@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
-use crate::archive::Archive;
+use crate::archive::{Archive, Page};
 use crate::debug_log;
 use crate::platform::resolve_shortcut;
 
@@ -89,8 +89,12 @@ impl Entry {
         self.archive.pages.len()
     }
 
-    pub fn page_name(&self, page: usize) -> Option<&str> {
-        self.archive.pages.get(page).map(|page| page.name.as_str())
+    pub fn pages(&self) -> &[Page] {
+        &self.archive.pages
+    }
+
+    pub fn page(&self, page: usize) -> Option<&Page> {
+        self.archive.pages.get(page)
     }
 }
 

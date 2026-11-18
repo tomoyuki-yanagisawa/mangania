@@ -8,9 +8,9 @@ use std::time::SystemTime;
 
 use image::RgbaImage;
 
-use crate::archive::decoder;
 use crate::archive::{Archive, EntryInfo};
 use crate::debug_log;
+use crate::decode;
 
 const TEMP_PREFIX: &str = ".mangania-tmp-";
 
@@ -82,7 +82,7 @@ impl DiskCache {
         name: &str,
     ) -> Result<RgbaImage, String> {
         let path = self.source(archive, entry, name)?;
-        match decoder::decode_file(&path) {
+        match decode::decode_file(&path) {
             Ok(image) => Ok(image),
             Err(error) => {
                 let _ = fs::remove_file(&path);

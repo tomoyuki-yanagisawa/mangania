@@ -14,6 +14,8 @@ pub(crate) use macos::menu::MenuBar;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 pub(crate) use menu::{MenuCommand, MenuState, action_for_mode};
 #[cfg(windows)]
+pub(crate) use windows::icon::apply as apply_window_icon;
+#[cfg(windows)]
 pub(crate) use windows::menu::MenuBar;
 
 /// Creates the event loop builder with each platform's menu setup applied.

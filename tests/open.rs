@@ -27,7 +27,7 @@ fn detects_and_opens_a_zip() {
     let mut entry = Entry::open(&path).unwrap();
     assert_eq!(entry.path, path);
     assert_eq!(entry.page_count(), 2);
-    assert_eq!(entry.page_name(0), Some("1.jpg"));
+    assert_eq!(entry.page(0).unwrap().name, "1.jpg");
     assert_eq!(page_bytes(&mut entry, 1), b"two");
 
     common::cleanup(&path);
@@ -44,7 +44,7 @@ fn opens_a_zip_with_leading_data() {
     assert_eq!(open::detect(&path), Format::Broken);
 
     let mut entry = Entry::open(&path).unwrap();
-    assert_eq!(entry.page_name(0), Some("1.jpg"));
+    assert_eq!(entry.page(0).unwrap().name, "1.jpg");
     assert_eq!(page_bytes(&mut entry, 0), b"one");
 
     common::cleanup(&zip);
@@ -87,7 +87,7 @@ fn resolves_windows_shortcut_to_zip() {
         std::fs::canonicalize(&entry.path).unwrap(),
         std::fs::canonicalize(&zip).unwrap()
     );
-    assert_eq!(entry.page_name(0), Some("1.jpg"));
+    assert_eq!(entry.page(0).unwrap().name, "1.jpg");
     assert_eq!(page_bytes(&mut entry, 0), b"one");
 
     common::cleanup(&zip);

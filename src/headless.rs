@@ -7,7 +7,7 @@ use crate::storage::disk_cache::DiskCache;
 
 pub fn list(path: &Path) -> Result<(), Box<dyn Error>> {
     let entry = Entry::open(path).map_err(io::Error::other)?;
-    for (index, page) in entry.archive.pages.iter().enumerate() {
+    for (index, page) in entry.pages().iter().enumerate() {
         println!("{}\t{}", index + 1, page.name);
     }
     println!("{} page(s)", entry.page_count());
@@ -20,7 +20,9 @@ pub fn check(path: &Path, cache: &DiskCache) -> Result<(), Box<dyn Error>> {
     let mut failed = 0;
 
     for page in 0..total {
-        let page_info = entry.archive.pages[page].clone();
+        let Some(page_info) = entry.page(page).cloned() else {
+            continue;
+        };
         if let Err(error) = cache.decode(&mut entry.archive, page_info.entry, &page_info.name) {
             failed += 1;
             eprintln!("page {} ({}): {error}", page + 1, page_info.name);
@@ -44,7 +46,10 @@ pub fn render_page(
     let index = page
         .checked_sub(1)
         .ok_or_else(|| io::Error::other("page must be >= 1"))?;
-    let page_info = entry.archive.pages[index].clone();
+    let page_info = entry
+        .page(index)
+        .cloned()
+        .ok_or_else(|| io::Error::other("page out of range"))?;
     let image = cache
         .decode(&mut entry.archive, page_info.entry, &page_info.name)
         .map_err(io::Error::other)?;

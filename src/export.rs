@@ -11,10 +11,11 @@ pub fn save_current_page(
     cache: &DiskCache,
 ) -> Result<PathBuf, String> {
     let mut entry = Entry::open(archive_path)?;
-    let entry_name = entry
-        .page_name(page)
-        .map(str::to_owned)
+    let page_info = entry
+        .page(page)
+        .cloned()
         .ok_or_else(|| "page out of range".to_string())?;
+    let entry_name = page_info.name.as_str();
 
     let book = entry
         .path
@@ -22,11 +23,11 @@ pub fn save_current_page(
         .and_then(|value| value.to_str())
         .unwrap_or("book")
         .to_string();
-    let name = Path::new(&entry_name)
+    let name = Path::new(entry_name)
         .file_stem()
         .and_then(|value| value.to_str())
         .unwrap_or("page");
-    let extension = Path::new(&entry_name)
+    let extension = Path::new(entry_name)
         .extension()
         .and_then(|value| value.to_str())
         .unwrap_or("img");
@@ -41,7 +42,6 @@ pub fn save_current_page(
     std::fs::create_dir_all(&directory)
         .map_err(|error| format!("create {}: {error}", directory.display()))?;
     let output = directory.join(format!("{stem}.{extension}"));
-    let page_info = entry.archive.pages[page].clone();
     let source = cache.source(&mut entry.archive, page_info.entry, &page_info.name)?;
     if let Err(error) = std::fs::copy(&source, &output) {
         let _ = std::fs::remove_file(&output);

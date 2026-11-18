@@ -3,7 +3,7 @@ use std::num::NonZeroU32;
 use image::RgbaImage;
 
 use crate::debug_log;
-use crate::render::view;
+use crate::render::image::{blank, render_pages};
 use crate::render::viewer::{Frame, Viewport};
 
 use super::App;
@@ -75,7 +75,7 @@ impl App {
 
         match frame {
             Frame::Failed => {
-                view::blank(&mut buffer);
+                blank(&mut buffer);
                 self.last_frame.clear();
             }
             Frame::Loading => {
@@ -86,7 +86,7 @@ impl App {
                 if self.last_frame.len() == buffer.len() {
                     buffer.copy_from_slice(&self.last_frame);
                 } else {
-                    view::blank(&mut buffer);
+                    blank(&mut buffer);
                 }
             }
             Frame::Single(image) => {
@@ -171,7 +171,7 @@ fn draw_cells(
     cells: &[Option<&RgbaImage>],
 ) {
     let start = std::time::Instant::now();
-    view::render_pages(buffer, width as usize, height as usize, cells);
+    render_pages(buffer, width as usize, height as usize, cells);
 
     last_frame.resize(buffer.len(), 0);
     last_frame.copy_from_slice(buffer);

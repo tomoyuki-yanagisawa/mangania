@@ -299,17 +299,15 @@ src/
 │   ├── draw.rs  # 描画、ビューポート、画像受信
 │   ├── input.rs # ナビゲーション、クリック、キー
 │   ├── open.rs  # アーカイブを開く、ページ保存
-│   ├── window.rs # 全画面、メニュー、縮小フィルタ操作
-│   └── window_icon.rs # タイトルバー / タスクバーのアイコン（Windows、build.rs 生成）
+│   └── window.rs # 全画面、メニュー、縮小フィルタ操作
 ├── archive/
 │   ├── mod.rs   # ZIP 索引・自然順・読み出し、エントリのストリーム展開
-│   ├── open.rs  # 形式判定・エントリ
-│   └── decoder.rs # JPEG / PNG / WebP / BMP デコード
+│   └── open.rs  # 形式判定・エントリ
 ├── render/
 │   ├── mod.rs
-│   ├── cache.rs # 表示サイズ画像の上限付きキャッシュ（現在ページからの距離で破棄）
+│   ├── cache.rs # 表示サイズ画像の上限付きキャッシュ（前後1表示を保護して破棄）
 │   ├── prefetch.rs # ワーカースレッドと優先度付きジョブ（winit非依存）
-│   ├── view.rs  # フィット・ページ配置・0RGB 描画
+│   ├── image.rs # フィット・ページ配置・縮小・0RGB 描画
 │   └── viewer.rs # Viewer: ページ、現在位置、表示サイズキャッシュ、Prefetch要求
 ├── input/
 │   ├── mod.rs
@@ -325,6 +323,7 @@ src/
 ├── platform/
 │   ├── menu.rs     # OS 非依存のメニューコマンド、チェック状態
 │   ├── windows/
+│   │   ├── icon.rs     # タイトルバー / タスクバーのアイコン（build.rs 生成）
 │   │   ├── menu.rs     # Win32 メニューバー、WM_COMMAND / アクティブ化クリック
 │   │   └── shortcut.rs # .lnk の COM 解決
 │   └── macos/
@@ -333,6 +332,7 @@ src/
 ├── event.rs     # winit/menu のユーザーイベント
 ├── debug_log.rs # デバッグログ出力
 ├── cli.rs       # 引数解析
+├── decode.rs    # JPEG / PNG / WebP / BMP のデコード
 ├── export.rs    # 表示中ページの保存、ファイル名テンプレート
 └── headless.rs  # GUIなしの list / check / render-page
 

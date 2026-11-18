@@ -2,8 +2,6 @@ mod draw;
 mod input;
 mod open;
 mod window;
-#[cfg(target_os = "windows")]
-mod window_icon;
 
 use std::error::Error;
 use std::path::PathBuf;
