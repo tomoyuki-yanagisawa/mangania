@@ -3,6 +3,7 @@ use std::io;
 use std::path::Path;
 
 use crate::archive::open::Entry;
+use crate::render::decode::decode_page;
 use crate::storage::disk_cache::DiskCache;
 
 pub fn list(path: &Path) -> Result<(), Box<dyn Error>> {
@@ -23,7 +24,10 @@ pub fn check(path: &Path, cache: &DiskCache) -> Result<(), Box<dyn Error>> {
         let Some(page_info) = entry.page(page).cloned() else {
             continue;
         };
-        if let Err(error) = cache.decode(&mut entry.archive, page_info.entry, &page_info.name) {
+        let result = cache
+            .page_path(&mut entry.archive, &page_info)
+            .and_then(|file| decode_page(cache, &file));
+        if let Err(error) = result {
             failed += 1;
             eprintln!("page {} ({}): {error}", page + 1, page_info.name);
         }
@@ -50,9 +54,10 @@ pub fn render_page(
         .page(index)
         .cloned()
         .ok_or_else(|| io::Error::other("page out of range"))?;
-    let image = cache
-        .decode(&mut entry.archive, page_info.entry, &page_info.name)
+    let file = cache
+        .page_path(&mut entry.archive, &page_info)
         .map_err(io::Error::other)?;
+    let image = decode_page(cache, &file).map_err(io::Error::other)?;
     image::DynamicImage::ImageRgba8(image).save(output)?;
     println!("wrote {}", output.display());
     Ok(())

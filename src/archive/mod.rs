@@ -13,8 +13,13 @@ use crate::debug_log;
 const MAX_ENTRIES: usize = 100_000;
 const MAX_ENTRY_BYTES: u64 = 512 * 1024 * 1024;
 
+enum Source {
+    Zip(ZipArchive<File>),
+    Directory { root: PathBuf },
+}
+
 pub struct Archive {
-    zip: ZipArchive<File>,
+    source: Source,
     pub pages: Vec<Page>,
     pub(crate) path: PathBuf,
     pub(crate) size: u64,
@@ -82,7 +87,7 @@ impl Archive {
             pages.len()
         ));
         Ok(Self {
-            zip,
+            source: Source::Zip(zip),
             pages,
             path: path.to_path_buf(),
             size: file_len,
@@ -90,10 +95,69 @@ impl Archive {
         })
     }
 
+    /// Indexes the image files directly inside `path`.
+    ///
+    /// Subdirectories are ignored; open the subdirectory itself to read it.
+    pub fn open_directory(path: &Path) -> Result<Self, String> {
+        let mut pages = Vec::new();
+        let entries = std::fs::read_dir(path)
+            .map_err(|error| format!("read directory {}: {error}", path.display()))?;
+        for entry in entries {
+            let entry =
+                entry.map_err(|error| format!("read directory {}: {error}", path.display()))?;
+            let file_type = entry.file_type().map_err(|error| {
+                format!("stat directory entry {}: {error}", entry.path().display())
+            })?;
+            if file_type.is_symlink() || !file_type.is_file() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !is_page_name(&name) {
+                continue;
+            }
+            if pages.len() >= MAX_ENTRIES {
+                return Err(format!("too many image files in {}", path.display()));
+            }
+            pages.push(Page { name, entry: 0 });
+        }
+        if pages.is_empty() {
+            return Err(format!("no supported images in {}", path.display()));
+        }
+
+        pages.sort_by(|a, b| natural_cmp(&a.name, &b.name));
+        for (index, page) in pages.iter_mut().enumerate() {
+            page.entry = index;
+        }
+        debug_log::log(format_args!(
+            "directory: path={} pages={}",
+            path.display(),
+            pages.len()
+        ));
+        Ok(Self {
+            source: Source::Directory {
+                root: path.to_path_buf(),
+            },
+            pages,
+            path: path.to_path_buf(),
+            size: 0,
+            modified: None,
+        })
+    }
+
+    /// The directory being read, if this archive is a plain image directory.
+    pub(crate) fn directory_root(&self) -> Option<&Path> {
+        match &self.source {
+            Source::Directory { root } => Some(root),
+            Source::Zip(_) => None,
+        }
+    }
+
     /// Returns ZIP metadata used by the disk cache key and extraction path.
     pub fn entry_info(&mut self, entry: usize) -> Result<EntryInfo, String> {
-        let file = self
-            .zip
+        let Source::Zip(zip) = &mut self.source else {
+            return Err("not a ZIP archive".to_string());
+        };
+        let file = zip
             .by_index(entry)
             .map_err(|e| format!("entry {entry}: {e}"))?;
         if file.size() > MAX_ENTRY_BYTES {
@@ -107,8 +171,10 @@ impl Archive {
 
     /// Streams a decompressed entry into `writer` without buffering it in memory.
     pub fn write_index<W: Write>(&mut self, entry: usize, writer: &mut W) -> Result<u64, String> {
-        let file = self
-            .zip
+        let Source::Zip(zip) = &mut self.source else {
+            return Err("not a ZIP archive".to_string());
+        };
+        let file = zip
             .by_index(entry)
             .map_err(|e| format!("entry {entry}: {e}"))?;
         if file.size() > MAX_ENTRY_BYTES {
