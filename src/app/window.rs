@@ -31,7 +31,7 @@ impl Window {
             .with_title("MangaNia")
             .with_inner_size(LogicalSize::new(1200.0, 900.0));
         #[cfg(target_os = "windows")]
-        let attributes = super::window_icon::apply(attributes);
+        let attributes = crate::platform::apply_window_icon(attributes);
         let window = event_loop
             .create_window(attributes)
             .map_err(|error| format!("create window: {error}"))?;

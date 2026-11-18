@@ -3,6 +3,7 @@ pub mod archive;
 pub mod cli;
 pub mod config;
 pub(crate) mod debug_log;
+pub mod decode;
 pub(crate) mod event;
 pub mod export;
 pub mod headless;

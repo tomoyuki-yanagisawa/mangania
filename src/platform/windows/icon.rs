@@ -13,7 +13,7 @@ const TITLEBAR_ICON_RGBA: &[u8] =
 const TASKBAR_ICON_RGBA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/mangania-taskbar.rgba"));
 
 /// Attaches the generated icons to a window that is about to be created.
-pub(super) fn apply(attributes: WindowAttributes) -> WindowAttributes {
+pub(crate) fn apply(attributes: WindowAttributes) -> WindowAttributes {
     let attributes = match load(TITLEBAR_ICON_RGBA, TITLEBAR_ICON_SIZE, "title bar") {
         Some(icon) => attributes.with_window_icon(Some(icon)),
         None => attributes,

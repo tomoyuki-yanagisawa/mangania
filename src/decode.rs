@@ -1,3 +1,5 @@
+//! Image decoding for archive entries and plain files.
+
 use std::path::Path;
 
 use image::RgbaImage;

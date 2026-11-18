@@ -36,26 +36,22 @@ impl ScaleFilter {
     ];
 
     pub fn as_str(self) -> &'static str {
-        match self {
-            ScaleFilter::Nearest => "nearest",
-            ScaleFilter::Triangle => "triangle",
-            ScaleFilter::Hamming => "hamming",
-            ScaleFilter::CatmullRom => "catmull_rom",
-            ScaleFilter::Mitchell => "mitchell",
-            ScaleFilter::Gaussian => "gaussian",
-            ScaleFilter::Lanczos3 => "lanczos3",
-        }
+        self.names().0
     }
 
     pub fn label(self) -> &'static str {
+        self.names().1
+    }
+
+    fn names(self) -> (&'static str, &'static str) {
         match self {
-            ScaleFilter::Nearest => "Nearest",
-            ScaleFilter::Triangle => "Triangle",
-            ScaleFilter::Hamming => "Hamming",
-            ScaleFilter::CatmullRom => "Catmull-Rom",
-            ScaleFilter::Mitchell => "Mitchell",
-            ScaleFilter::Gaussian => "Gaussian",
-            ScaleFilter::Lanczos3 => "Lanczos3",
+            ScaleFilter::Nearest => ("nearest", "Nearest"),
+            ScaleFilter::Triangle => ("triangle", "Triangle"),
+            ScaleFilter::Hamming => ("hamming", "Hamming"),
+            ScaleFilter::CatmullRom => ("catmull_rom", "Catmull-Rom"),
+            ScaleFilter::Mitchell => ("mitchell", "Mitchell"),
+            ScaleFilter::Gaussian => ("gaussian", "Gaussian"),
+            ScaleFilter::Lanczos3 => ("lanczos3", "Lanczos3"),
         }
     }
 }
@@ -71,18 +67,18 @@ pub enum DisplayMode {
 
 impl DisplayMode {
     pub fn as_str(self) -> &'static str {
-        match self {
-            DisplayMode::Single => "single",
-            DisplayMode::Spread => "spread",
-            DisplayMode::Mixed => "mixed",
-        }
+        self.names().0
     }
 
     pub fn label(self) -> &'static str {
+        self.names().1
+    }
+
+    fn names(self) -> (&'static str, &'static str) {
         match self {
-            DisplayMode::Single => "単ページ表示",
-            DisplayMode::Spread => "見開き表示",
-            DisplayMode::Mixed => "混合表示",
+            DisplayMode::Single => ("single", "単ページ表示"),
+            DisplayMode::Spread => ("spread", "見開き表示"),
+            DisplayMode::Mixed => ("mixed", "混合表示"),
         }
     }
 }
@@ -200,21 +196,16 @@ impl Config {
 
     /// Number of display images the cache can hold. Each page has one.
     pub fn cache_entries(&self) -> usize {
-        if self.cache_pages == 0 {
-            DEFAULT_CACHE_PAGES
-        } else {
-            self.cache_pages
-        }
+        cache_value(self.cache_pages, DEFAULT_CACHE_PAGES)
     }
 
     pub fn cache_bytes(&self) -> usize {
-        let cache_mb = if self.cache_mb == 0 {
-            DEFAULT_CACHE_MB
-        } else {
-            self.cache_mb
-        };
-        cache_mb.saturating_mul(1024 * 1024)
+        cache_value(self.cache_mb, DEFAULT_CACHE_MB).saturating_mul(1024 * 1024)
     }
+}
+
+fn cache_value(value: usize, default: usize) -> usize {
+    if value == 0 { default } else { value }
 }
 
 fn write_default_config(path: &Path) -> io::Result<()> {

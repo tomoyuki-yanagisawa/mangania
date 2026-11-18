@@ -9,9 +9,8 @@ use crate::config::{DisplayMode, ScaleFilter};
 use crate::debug_log;
 use crate::input::navigation;
 use crate::render::cache::PageCache;
+use crate::render::image::{fit, resized};
 use crate::render::prefetch::Prefetch;
-use crate::render::resize::resized;
-use crate::render::view;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Viewport {
@@ -282,7 +281,7 @@ impl Viewer {
         let orientation = Orientation::from_size(width, height);
         self.orientations.insert(page, orientation);
         let (cell_width, cell_height) = display_size(self.viewport, orientation);
-        let target = view::fit(width, height, cell_width as usize, cell_height as usize);
+        let target = fit(width, height, cell_width as usize, cell_height as usize);
         if target.0 == 0 || target.1 == 0 {
             // A page that cannot be fitted will never be displayable. Record
             // it as an error so waiting does not retry it forever.
