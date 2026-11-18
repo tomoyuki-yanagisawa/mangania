@@ -79,6 +79,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item "target/release/mangania.exe" dist/
           Copy-Item "README.md" dist/
+          Copy-Item "LICENSE-MIT" dist/
+          Copy-Item "LICENSE-APACHE" dist/
           $archive = "mangania-v${{ needs.version.outputs.version }}-${{ matrix.platform }}.zip"
           Compress-Archive -Path "dist/*" -DestinationPath $archive
 
@@ -89,6 +91,7 @@ jobs:
           mkdir -p dist
           cp target/release/mangania dist/
           cp README.md dist/
+          cp LICENSE-MIT LICENSE-APACHE dist/
           platform="${{ matrix.platform }}"
           if [ "${{ runner.os }}" = "macOS" ]; then
             platform="macos-$(uname -m)"
@@ -131,6 +134,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item "target/x86_64-win7-windows-msvc/release/mangania.exe" dist/
           Copy-Item "README.md" dist/
+          Copy-Item "LICENSE-MIT" dist/
+          Copy-Item "LICENSE-APACHE" dist/
           $archive = "mangania-v${{ needs.version.outputs.version }}-windows7-x86_64.zip"
           Compress-Archive -Path "dist/*" -DestinationPath $archive
 
