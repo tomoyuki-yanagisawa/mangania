@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 pub const DEFAULT_EXPORT_NAME: &str = "{book}_{page:03}";
 pub const DEFAULT_PREFETCH: usize = 2;
 pub const DEFAULT_CACHE_PAGES: usize = 8;
-pub const DEFAULT_CACHE_MB: usize = 128;
+pub const DEFAULT_CACHE_MB: usize = 256;
 
 const CONFIG_FILE: &str = "config.toml";
 
