@@ -80,9 +80,18 @@ fn leaves_a_missing_right_cell_blank() {
 
 #[test]
 fn fits_display_images_inside_the_viewport() {
-    assert_eq!(fit(2, 1, 8, 8), (8, 4));
-    assert_eq!(fit(1, 2, 8, 8), (4, 8));
-    assert_eq!(fit(8, 8, 4, 2), (2, 2));
-    assert_eq!(fit(0, 100, 8, 8), (0, 0));
-    assert_eq!(fit(100, 100, 0, 8), (0, 0));
+    assert_eq!(fit(2, 1, 8, 8, true), (8, 4));
+    assert_eq!(fit(1, 2, 8, 8, true), (4, 8));
+    assert_eq!(fit(8, 8, 4, 2, true), (2, 2));
+    assert_eq!(fit(0, 100, 8, 8, true), (0, 0));
+    assert_eq!(fit(100, 100, 0, 8, true), (0, 0));
+}
+
+#[test]
+fn keeps_small_images_at_their_original_size_when_upscaling_is_disabled() {
+    assert_eq!(fit(2, 1, 8, 8, false), (2, 1));
+    assert_eq!(fit(2, 1, 8, 8, true), (8, 4));
+    // Shrinking still works.
+    assert_eq!(fit(8, 8, 4, 2, false), (2, 2));
+    assert_eq!(fit(0, 100, 8, 8, false), (0, 0));
 }

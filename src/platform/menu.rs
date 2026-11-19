@@ -11,7 +11,9 @@ pub(crate) mod labels {
     pub(crate) const FILE: &str = "ファイル";
     pub(crate) const NAVIGATION: &str = "移動";
     pub(crate) const VIEW: &str = "表示";
+    pub(crate) const SETTINGS: &str = "設定";
     pub(crate) const FILTERS: &str = "縮小フィルタ";
+    pub(crate) const ALLOW_UPSCALE: &str = "拡大を許可";
     pub(crate) const SAVE_PAGE: &str = "表示中のページを保存";
     pub(crate) const CLEAR_CACHE: &str = "キャッシュを削除";
     pub(crate) const FULLSCREEN: &str = "全画面表示";
@@ -37,6 +39,7 @@ pub(crate) enum MenuCommand {
     SetScaleFilter(ScaleFilter),
     ClearDiskCache,
     ExitApplication,
+    ToggleAllowUpscale,
 }
 
 impl MenuCommand {
@@ -57,6 +60,7 @@ impl MenuCommand {
             }
             MenuCommand::ClearDiskCache => 40,
             MenuCommand::ExitApplication => 41,
+            MenuCommand::ToggleAllowUpscale => 42,
         }
     }
 
@@ -66,6 +70,7 @@ impl MenuCommand {
             20..=26 => MenuCommand::SetScaleFilter(ScaleFilter::ALL[(id - 20) as usize]),
             40 => MenuCommand::ClearDiskCache,
             41 => MenuCommand::ExitApplication,
+            42 => MenuCommand::ToggleAllowUpscale,
             _ => return None,
         };
         Some(command)
@@ -87,6 +92,7 @@ pub(crate) struct MenuState {
     pub mode: DisplayMode,
     pub filter: ScaleFilter,
     pub fullscreen: bool,
+    pub allow_upscale: bool,
 }
 
 #[cfg(test)]
@@ -105,6 +111,7 @@ mod tests {
             MenuCommand::SetScaleFilter(ScaleFilter::Lanczos3),
             MenuCommand::ClearDiskCache,
             MenuCommand::ExitApplication,
+            MenuCommand::ToggleAllowUpscale,
         ];
         for command in commands {
             assert_eq!(MenuCommand::from_id(command.id()), Some(command));
@@ -119,8 +126,9 @@ mod tests {
         assert_eq!(MenuCommand::SetScaleFilter(ScaleFilter::Lanczos3).id(), 26);
         assert_eq!(MenuCommand::ClearDiskCache.id(), 40);
         assert_eq!(MenuCommand::ExitApplication.id(), 41);
+        assert_eq!(MenuCommand::ToggleAllowUpscale.id(), 42);
         assert_eq!(MenuCommand::from_id(14), None);
         assert_eq!(MenuCommand::from_id(19), None);
-        assert_eq!(MenuCommand::from_id(42), None);
+        assert_eq!(MenuCommand::from_id(43), None);
     }
 }

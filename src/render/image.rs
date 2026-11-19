@@ -66,11 +66,23 @@ fn place(buffer: &mut [u32], width: usize, height: usize, image: &RgbaImage, cen
 
 /// Returns the display size of an image fitted into the viewport while
 /// preserving its aspect ratio.
-pub fn fit(width: u32, height: u32, max_width: usize, max_height: usize) -> (u32, u32) {
+///
+/// When `allow_upscale` is false, the scale is clamped to at most 1.0 so
+/// smaller images keep their original size. Shrinking always works.
+pub fn fit(
+    width: u32,
+    height: u32,
+    max_width: usize,
+    max_height: usize,
+    allow_upscale: bool,
+) -> (u32, u32) {
     if width == 0 || height == 0 || max_width == 0 || max_height == 0 {
         return (0, 0);
     }
-    let scale = (max_width as f64 / width as f64).min(max_height as f64 / height as f64);
+    let mut scale = (max_width as f64 / width as f64).min(max_height as f64 / height as f64);
+    if !allow_upscale {
+        scale = scale.min(1.0);
+    }
     scaled(width, height, scale)
 }
 

@@ -95,6 +95,9 @@ pub struct Config {
     pub cache_mb: usize,
     pub scale_filter: ScaleFilter,
     pub debug: bool,
+    /// Enlarge images smaller than the viewport. When false, pages are only
+    /// ever shrunk.
+    pub allow_upscale: bool,
 }
 
 impl Default for Config {
@@ -108,6 +111,7 @@ impl Default for Config {
             cache_mb: DEFAULT_CACHE_MB,
             scale_filter: ScaleFilter::default(),
             debug: false,
+            allow_upscale: true,
         }
     }
 }
@@ -173,6 +177,7 @@ impl Config {
             "# cache_mb: メモリキャッシュ上限（MiB）。0 は既定値\n",
             "# scale_filter: nearest / triangle / hamming / catmull_rom / mitchell / gaussian / lanczos3\n",
             "# debug: true で debug.log にログを出力\n",
+            "# allow_upscale: false にすると画面より小さい画像を拡大しない\n",
             "\n",
         ));
         text.push_str(&toml::to_string(self).unwrap_or_default());
