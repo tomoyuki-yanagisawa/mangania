@@ -72,12 +72,13 @@ impl App {
             }
         }
         debug_log::log(format_args!(
-            "config: mode={} prefetch={} cache_pages={} cache_mb={} scale_filter={} debug={}",
+            "config: mode={} prefetch={} cache_pages={} cache_mb={} scale_filter={} allow_upscale={} debug={}",
             config.mode.as_str(),
             config.prefetch,
             config.cache_pages,
             config.cache_mb,
             config.scale_filter.as_str(),
+            config.allow_upscale,
             config.debug
         ));
         let depth = prefetch.unwrap_or(config.prefetch);
@@ -191,6 +192,7 @@ impl ApplicationHandler<UserEvent> for App {
             let menu = MenuBar::new(
                 self.config.mode,
                 self.config.scale_filter,
+                self.config.allow_upscale,
                 self.proxy.clone(),
             );
             menu.attach(window.winit());

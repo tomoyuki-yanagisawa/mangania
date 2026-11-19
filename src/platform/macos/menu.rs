@@ -67,6 +67,7 @@ pub(crate) struct MenuBar {
     spread: Retained<NSMenuItem>,
     mixed: Retained<NSMenuItem>,
     fullscreen: Retained<NSMenuItem>,
+    allow_upscale: Retained<NSMenuItem>,
     filters: Vec<(ScaleFilter, Retained<NSMenuItem>)>,
 }
 
@@ -74,6 +75,7 @@ impl MenuBar {
     pub(crate) fn new(
         mode: DisplayMode,
         current_filter: ScaleFilter,
+        allow_upscale: bool,
         proxy: EventLoopProxy<UserEvent>,
     ) -> Self {
         let mtm = MainThreadMarker::new().expect("menu must be created on the main thread");
@@ -125,7 +127,8 @@ impl MenuBar {
         );
         view.addItem(&fullscreen);
 
-        let filter_menu = submenu(mtm, &view, labels::FILTERS);
+        let settings = submenu(mtm, &menu, labels::SETTINGS);
+        let filter_menu = submenu(mtm, &settings, labels::FILTERS);
         let mut filters = Vec::with_capacity(ScaleFilter::ALL.len());
         for filter in ScaleFilter::ALL {
             let filter_item = item(
@@ -138,6 +141,14 @@ impl MenuBar {
             filter_menu.addItem(&filter_item);
             filters.push((filter, filter_item));
         }
+        let allow_upscale_item = check_item_for(
+            mtm,
+            &target,
+            labels::ALLOW_UPSCALE,
+            MenuCommand::ToggleAllowUpscale,
+            allow_upscale,
+        );
+        settings.addItem(&allow_upscale_item);
 
         Self {
             menu,
@@ -146,6 +157,7 @@ impl MenuBar {
             spread,
             mixed,
             fullscreen,
+            allow_upscale: allow_upscale_item,
             filters,
         }
     }
@@ -161,6 +173,7 @@ impl MenuBar {
         set_checked(&self.spread, state.mode == DisplayMode::Spread);
         set_checked(&self.mixed, state.mode == DisplayMode::Mixed);
         set_checked(&self.fullscreen, state.fullscreen);
+        set_checked(&self.allow_upscale, state.allow_upscale);
         for (filter, item) in &self.filters {
             set_checked(item, *filter == state.filter);
         }

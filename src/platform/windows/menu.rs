@@ -29,6 +29,7 @@ const SUBCLASS_ID: usize = 1;
 pub(crate) struct MenuBar {
     menu: isize,
     view: isize,
+    settings: isize,
     filters: isize,
     window: Cell<isize>,
     proxy: EventLoopProxy<UserEvent>,
@@ -38,12 +39,14 @@ impl MenuBar {
     pub(crate) fn new(
         mode: DisplayMode,
         current_filter: ScaleFilter,
+        allow_upscale: bool,
         proxy: EventLoopProxy<UserEvent>,
     ) -> Self {
         let menu = unsafe { CreateMenu() };
         let file = outlined(unsafe { CreatePopupMenu() });
         let navigation = outlined(unsafe { CreatePopupMenu() });
         let view = outlined(unsafe { CreatePopupMenu() });
+        let settings = outlined(unsafe { CreatePopupMenu() });
         let filters = outlined(unsafe { CreatePopupMenu() });
         let app = outlined(unsafe { CreatePopupMenu() });
 
@@ -86,16 +89,24 @@ impl MenuBar {
                 filter == current_filter,
             );
         }
-        append_submenu(view, filters, labels::FILTERS);
+        append_submenu(settings, filters, labels::FILTERS);
+        append_item_checked(
+            settings,
+            MenuCommand::ToggleAllowUpscale,
+            labels::ALLOW_UPSCALE,
+            allow_upscale,
+        );
 
         append_submenu(menu, app, "MangaNia");
         append_submenu(menu, file, labels::FILE);
         append_submenu(menu, navigation, labels::NAVIGATION);
         append_submenu(menu, view, labels::VIEW);
+        append_submenu(menu, settings, labels::SETTINGS);
 
         Self {
             menu,
             view,
+            settings,
             filters,
             window: Cell::new(0),
             proxy,
@@ -149,6 +160,11 @@ impl MenuBar {
             self.view,
             MenuCommand::Action(Action::ToggleFullscreen),
             state.fullscreen,
+        );
+        check(
+            self.settings,
+            MenuCommand::ToggleAllowUpscale,
+            state.allow_upscale,
         );
     }
 

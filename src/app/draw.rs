@@ -18,7 +18,13 @@ impl App {
                 (size.width, size.height)
             })
             .unwrap_or((0, 0));
-        Viewport::new(width, height, self.config.scale_filter, self.config.mode)
+        Viewport::new(
+            width,
+            height,
+            self.config.scale_filter,
+            self.config.mode,
+            self.config.allow_upscale,
+        )
     }
 
     /// Updates the viewer when the window size, filter, or display mode

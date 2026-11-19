@@ -18,15 +18,23 @@ pub(crate) struct Viewport {
     height: u32,
     filter: ScaleFilter,
     mode: DisplayMode,
+    allow_upscale: bool,
 }
 
 impl Viewport {
-    pub(crate) fn new(width: u32, height: u32, filter: ScaleFilter, mode: DisplayMode) -> Self {
+    pub(crate) fn new(
+        width: u32,
+        height: u32,
+        filter: ScaleFilter,
+        mode: DisplayMode,
+        allow_upscale: bool,
+    ) -> Self {
         Self {
             width,
             height,
             filter,
             mode,
+            allow_upscale,
         }
     }
 
@@ -226,11 +234,12 @@ impl Viewer {
         self.cache.clear();
         self.rejected.clear();
         debug_log::log(format_args!(
-            "viewer: viewport {}x{} filter={} mode={} cache cleared",
+            "viewer: viewport {}x{} filter={} mode={} upscale={} cache cleared",
             viewport.width,
             viewport.height,
             viewport.filter.as_str(),
-            viewport.mode.as_str()
+            viewport.mode.as_str(),
+            viewport.allow_upscale
         ));
     }
 
@@ -291,7 +300,13 @@ impl Viewer {
         let orientation = Orientation::from_size(width, height);
         self.orientations.insert(page, orientation);
         let (cell_width, cell_height) = display_size(self.viewport, orientation);
-        let target = fit(width, height, cell_width as usize, cell_height as usize);
+        let target = fit(
+            width,
+            height,
+            cell_width as usize,
+            cell_height as usize,
+            self.viewport.allow_upscale,
+        );
         if target.0 == 0 || target.1 == 0 {
             // A page that cannot be fitted will never be displayable. Record
             // it as an error so waiting does not retry it forever.
@@ -541,6 +556,10 @@ mod tests {
     use crate::config::{DisplayMode, ScaleFilter};
 
     fn test_viewer(mode: DisplayMode, pages: usize) -> Viewer {
+        test_viewer_scaled(mode, pages, true)
+    }
+
+    fn test_viewer_scaled(mode: DisplayMode, pages: usize, allow_upscale: bool) -> Viewer {
         let pages = (0..pages)
             .map(|entry| Page {
                 name: format!("{entry}.png"),
@@ -557,7 +576,7 @@ mod tests {
                 entries: 8,
                 bytes: usize::MAX,
             },
-            Viewport::new(1200, 900, ScaleFilter::Triangle, mode),
+            Viewport::new(1200, 900, ScaleFilter::Triangle, mode, allow_upscale),
         )
     }
 
@@ -869,17 +888,37 @@ mod tests {
 
     #[test]
     fn display_images_fit_according_to_the_mode_and_orientation() {
-        let single = Viewport::new(1200, 900, ScaleFilter::Triangle, DisplayMode::Single);
+        let single = Viewport::new(1200, 900, ScaleFilter::Triangle, DisplayMode::Single, true);
         assert_eq!(display_size(single, Orientation::Portrait), (1200, 900));
         assert_eq!(display_size(single, Orientation::Landscape), (1200, 900));
 
-        let spread = Viewport::new(1200, 900, ScaleFilter::Triangle, DisplayMode::Spread);
+        let spread = Viewport::new(1200, 900, ScaleFilter::Triangle, DisplayMode::Spread, true);
         assert_eq!(display_size(spread, Orientation::Portrait), (600, 900));
         assert_eq!(display_size(spread, Orientation::Landscape), (600, 900));
 
-        let mixed = Viewport::new(1200, 900, ScaleFilter::Triangle, DisplayMode::Mixed);
+        let mixed = Viewport::new(1200, 900, ScaleFilter::Triangle, DisplayMode::Mixed, true);
         assert_eq!(display_size(mixed, Orientation::Portrait), (600, 900));
         assert_eq!(display_size(mixed, Orientation::Landscape), (1200, 900));
+    }
+
+    #[test]
+    fn upscale_setting_controls_small_pages() {
+        // 100x60 is smaller than the 1200x900 viewport.
+        let mut enlarged = test_viewer_scaled(DisplayMode::Single, 1, true);
+        enlarged.insert_decoded(0, Arc::new(RgbaImage::new(100, 60)));
+        assert_eq!(
+            enlarged.cache.get(0).unwrap().dimensions(),
+            (1200, 720),
+            "upscaling enabled must enlarge the page to the viewport"
+        );
+
+        let mut kept = test_viewer_scaled(DisplayMode::Single, 1, false);
+        kept.insert_decoded(0, Arc::new(RgbaImage::new(100, 60)));
+        assert_eq!(
+            kept.cache.get(0).unwrap().dimensions(),
+            (100, 60),
+            "upscaling disabled must keep the page at its original size"
+        );
     }
 
     #[test]

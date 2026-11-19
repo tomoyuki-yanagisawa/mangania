@@ -69,6 +69,18 @@ fn uses_triangle_when_scale_filter_is_missing_or_invalid() {
 }
 
 #[test]
+fn allow_upscale_defaults_to_true_and_can_be_disabled() {
+    assert!(Config::default().allow_upscale);
+    assert!(Config::parse("").allow_upscale);
+    assert!(Config::parse("allow_upscale = true\n").allow_upscale);
+    assert!(!Config::parse("allow_upscale = false\n").allow_upscale);
+
+    let text = Config::default().to_toml();
+    assert!(text.contains("# allow_upscale: false"));
+    assert!(text.contains("allow_upscale = true"));
+}
+
+#[test]
 fn parses_every_scale_filter() {
     let filters = [
         ("nearest", ScaleFilter::Nearest),
@@ -145,6 +157,7 @@ fn round_trips_config_file() {
         cache_mb: 64,
         scale_filter: ScaleFilter::Gaussian,
         debug: true,
+        allow_upscale: false,
     };
 
     config.save_to(&path).unwrap();
