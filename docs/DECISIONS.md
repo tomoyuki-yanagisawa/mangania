@@ -1,6 +1,6 @@
 # MangaNia 技術判断
 
-更新日: 2026-11-19
+更新日: 2026-11-20
 形式: 追記式の ADR（Architecture Decision Record）
 
 現在の構成は [DESIGN.md](DESIGN.md)、既定値は [PREFERENCES.md](PREFERENCES.md) を参照してください。
@@ -147,6 +147,8 @@
 
 **影響**: Windows 7 向けの `build-std` 成果物は自動リリースには含めない。必要になった時点で別ジョブとして追加する。タグが既に存在するバージョンではリリースをスキップする。
 
+**更新 (ADR-031)**: 通常テストは Linux に集約し、Windows / macOS はコンパイル確認に変更した。
+
 ## ADR-018: Enter と中クリックを既定の操作にする
 
 **決定**: `Enter` を全画面表示の切替に追加し、中クリックを1ページ送り（`next_single`）に割り当てる。見開き中の中クリックは開始ページを1つずらし、通常の2ページ送りはその偶奇を保って進む。
@@ -229,6 +231,8 @@
 
 **影響**: Windows と macOS のメニュー実装は自前で保守する。Windows のメッセージ受信はウィンドウごとの subclass に閉じ込め、macOS の AppKit 呼び出しはメインスレッドに限定する。キーボードショートカットは従来どおり `keybindings.toml` と winit が担当し、メニュー項目にはアクセラレータを付けない（終了の Cmd+Q を除く）。
 
+**更新**: メニューコマンド、ラベル、ナビゲーション項目は `src/menu.rs` に集約し、`platform/menu.rs` は廃止した。
+
 ## ADR-027: 画像フォルダは直下の画像だけを直接読む
 
 **背景**: ZIP にまとめずフォルダのまま置かれた漫画画像も開きたい。サブフォルダを自動でたどるか、ディスクキャッシュへコピーするか、という選択がある。
@@ -270,3 +274,13 @@
 **理由**: 設定項目はメニューバーから変更できればよく、用途が近いメニューに置く方が探しやすい。macOS のプレビューでも、ページ移動は「移動」、表示に関する操作は「表示」にまとまっている。メニュー階層を増やさず、既存の操作の意味も保てる。
 
 **影響**: 将来の真偽値・列挙の設定は、汎用の設定メニューではなく、用途に合う「表示」または「移動」へ置く。ADR-028 の「設定」メニュー部分はこの判断で置き換える。数値やパスの設定は引き続き TOML のみで扱う。
+
+## ADR-031: 通常テストは Linux に集約し、プラットフォームはコンパイル確認にする
+
+**背景**: PR ごとに Ubuntu / macOS / Windows で同じ unit / integration test を実行していたが、テスト本体は1秒未満で、時間の大半は3回のビルドと macOS runner の待ち時間だった。macOS は無料枠を 10 倍で消費し、PR の律速にもなっていた。
+
+**決定**: PR では Linux で `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test` を実行する。Windows は `cargo check --all-targets` でコンパイル確認する。macOS の `cargo check` は main push と手動実行で行う。OS 固有の実行テスト（Windows の `.lnk`、macOS のメニュー）は GUI テスト基盤の整備後に追加する。Release の Windows / Windows 7 / macOS / Linux ビルドは維持する。
+
+**理由**: unit テストのロジックは OS 非依存で、同じコードを3回ビルドする重複が大きい。Windows / macOS の `cfg` コードは `cargo check` でコンパイル破損を検出できる。macOS の runner 待ちを PR から外すことで、PR の待ち時間を短縮できる。
+
+**影響**: macOS 固有のコンパイル破損は main で検出される。PR で macOS を先に確認したい場合は `workflow_dispatch` を使う。`MenuCommand` を共通モジュールへ移し、メニュー ID のテストは Linux でも実行する。OS 固有の実行テストは GUI テスト基盤の整備後に追加する。

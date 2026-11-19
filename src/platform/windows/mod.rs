@@ -1,5 +1,5 @@
 pub(crate) mod icon;
-pub(crate) mod menu;
+pub(crate) mod menu_bar;
 pub(crate) mod shortcut;
 
 use winit::window::Window;

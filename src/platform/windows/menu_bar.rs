@@ -20,7 +20,7 @@ use crate::config::{DisplayMode, ScaleFilter};
 use crate::debug_log;
 use crate::event::UserEvent;
 use crate::input::bindings::Action;
-use crate::platform::menu::{NAVIGATION_ITEMS, labels};
+use crate::menu::{NAVIGATION_ITEMS, labels};
 use crate::platform::{MenuCommand, MenuState, action_for_mode};
 
 const SUBCLASS_ID: usize = 1;
