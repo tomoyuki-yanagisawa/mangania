@@ -320,6 +320,7 @@ cargo +nightly build -Z build-std --target x86_64-win7-windows-msvc --release
 src/
 ├── lib.rs       # ライブラリ入口（コアAPI）
 ├── main.rs      # CLI
+├── menu.rs      # メニューコマンド、ラベル、ナビゲーション、チェック状態（OS非依存）
 ├── app/
 │   ├── mod.rs   # run、App、イベントループ
 │   ├── draw.rs  # 描画、ビューポート、画像受信
@@ -348,13 +349,12 @@ src/
 │   ├── mod.rs
 │   └── disk_cache.rs # ZIP の展開済みページのディスクキャッシュ（手動削除）
 ├── platform/
-│   ├── menu.rs     # OS 非依存のメニューコマンド、チェック状態
 │   ├── windows/
 │   │   ├── icon.rs     # タイトルバー / タスクバーのアイコン（build.rs 生成）
-│   │   ├── menu.rs     # Win32 メニューバー、WM_COMMAND / アクティブ化クリック
+│   │   ├── menu_bar.rs # Win32 メニューバー、WM_COMMAND / アクティブ化クリック
 │   │   └── shortcut.rs # .lnk の COM 解決
 │   └── macos/
-│       └── menu.rs     # AppKit のシステムメニューバー
+│       └── menu_bar.rs # AppKit のシステムメニューバー
 ├── config.rs    # TOML設定（表示・保存・縮小フィルタ・拡大可否の永続化）
 ├── event.rs     # winit/menu のユーザーイベント
 ├── debug_log.rs # デバッグログ出力
@@ -390,7 +390,10 @@ cargo clippy --all-targets
 ## CI / リリース
 
 - Pull Request と main への push で GitHub Actions の CI が走ります。
-  - Ubuntu / macOS / Windows の3環境で `cargo fmt --check` / `cargo clippy --all-targets` / `cargo test`
+  - Pull Request: Ubuntu で `cargo fmt --check` / `cargo clippy --all-targets -- -D warnings` / `cargo test`、Windows で `cargo check --all-targets`
+  - main: Ubuntu でテスト、Windows / macOS で `cargo check --all-targets`
+  - OS 固有の実行テストは、GUI テスト基盤を整備してから追加します
+  - 手動実行（`workflow_dispatch`）では Ubuntu / Windows / macOS の3環境を確認できます
 - バージョンは `Cargo.toml` の `[package] version` で管理します。
 - `version` を更新し、`cargo check` で `Cargo.lock` も更新して main にマージすると、`v<version>` タグと GitHub Release を作成します。
 - Release には次の成果物を添付します。

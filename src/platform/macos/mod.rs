@@ -1,1 +1,1 @@
-pub(crate) mod menu;
+pub(crate) mod menu_bar;

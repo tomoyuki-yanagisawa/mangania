@@ -100,8 +100,8 @@ pub(crate) struct MenuState {
 
 #[cfg(test)]
 mod tests {
-    use super::MenuCommand;
-    use crate::config::ScaleFilter;
+    use super::{MenuCommand, MenuState, NAVIGATION_ITEMS, action_for_mode, labels};
+    use crate::config::{DisplayMode, ScaleFilter};
     use crate::input::bindings::Action;
 
     #[test]
@@ -133,5 +133,64 @@ mod tests {
         assert_eq!(MenuCommand::from_id(14), None);
         assert_eq!(MenuCommand::from_id(19), None);
         assert_eq!(MenuCommand::from_id(43), None);
+    }
+
+    #[test]
+    fn mode_actions_match_display_modes() {
+        assert_eq!(action_for_mode(DisplayMode::Single), Action::SinglePage);
+        assert_eq!(action_for_mode(DisplayMode::Spread), Action::SpreadPage);
+        assert_eq!(action_for_mode(DisplayMode::Mixed), Action::MixedPage);
+    }
+
+    #[test]
+    fn menu_state_keeps_the_selected_values() {
+        let state = MenuState {
+            mode: DisplayMode::Mixed,
+            filter: ScaleFilter::Gaussian,
+            fullscreen: true,
+            allow_upscale: false,
+        };
+        assert_eq!(state.mode, DisplayMode::Mixed);
+        assert_eq!(state.filter, ScaleFilter::Gaussian);
+        assert!(state.fullscreen);
+        assert!(!state.allow_upscale);
+    }
+
+    #[test]
+    fn all_labels_are_non_empty() {
+        for label in [
+            labels::FILE,
+            labels::NAVIGATION,
+            labels::VIEW,
+            labels::FILTERS,
+            labels::ALLOW_UPSCALE,
+            labels::SAVE_PAGE,
+            labels::CLEAR_CACHE,
+            labels::FULLSCREEN,
+            labels::QUIT,
+            labels::NEXT,
+            labels::PREV,
+            labels::NEXT_SINGLE,
+            labels::PREV_SINGLE,
+            labels::FIRST,
+            labels::LAST,
+        ] {
+            assert!(!label.is_empty());
+        }
+    }
+
+    #[test]
+    fn navigation_items_are_in_menu_order() {
+        assert_eq!(
+            NAVIGATION_ITEMS,
+            [
+                (labels::NEXT, Action::Next),
+                (labels::PREV, Action::Prev),
+                (labels::NEXT_SINGLE, Action::NextSingle),
+                (labels::PREV_SINGLE, Action::PrevSingle),
+                (labels::FIRST, Action::First),
+                (labels::LAST, Action::Last),
+            ]
+        );
     }
 }
