@@ -202,7 +202,6 @@ impl Viewer {
             return false;
         }
         self.current = page;
-        self.prefetch.clear_pending();
         true
     }
 
@@ -233,6 +232,7 @@ impl Viewer {
         self.viewport = viewport;
         self.cache.clear();
         self.rejected.clear();
+        self.prefetch.clear_pending();
         debug_log::log(format_args!(
             "viewer: viewport {}x{} filter={} mode={} upscale={} cache cleared",
             viewport.width,
@@ -243,52 +243,43 @@ impl Viewer {
         ));
     }
 
-    pub(crate) fn request_current(&mut self) {
+    /// Rebuilds the worker queue in decode order: the visible page (or pair),
+    /// then the pages ahead. Cached pages are skipped, and rejected prefetch
+    /// pages are not retried until they become visible.
+    pub(crate) fn request_display(&mut self) {
+        let mut jobs = Vec::new();
+        let mut seen = HashSet::new();
         let current = self.current;
-        let mut pages = vec![current];
+        self.push_job(&mut jobs, &mut seen, current, true);
         if self.viewport.mode != DisplayMode::Single && current + 1 < self.pages.len() {
-            pages.push(current + 1);
+            self.push_job(&mut jobs, &mut seen, current + 1, true);
         }
-        // Ask for the whole spread at once. Requesting the pages separately
-        // would make the second urgent request discard the first one. Mixed
-        // mode also needs the next page to know whether it can be paired.
-        // Visible pages are requested again even if prefetch rejected them
-        // earlier: a rejection only prevents repeated prefetches of pages that
-        // are not on screen.
-        let jobs = pages
-            .into_iter()
-            .filter(|&page| self.needs_request(page))
-            .map(|page| {
-                let page_info = &self.pages[page];
-                (page, page_info.entry, page_info.name.clone())
-            })
-            .collect();
-        self.prefetch.request_batch(jobs);
-    }
-
-    pub(crate) fn prefetch_around(&mut self) {
-        let targets = prefetch_targets(
-            self.current,
-            self.pages.len(),
-            self.depth,
-            self.viewport.mode,
-        );
-        for page in targets {
-            self.request(page);
+        for page in prefetch_targets(current, self.pages.len(), self.depth, self.viewport.mode) {
+            self.push_job(&mut jobs, &mut seen, page, false);
         }
+        self.prefetch.set_jobs(jobs);
     }
 
     fn needs_request(&self, page: usize) -> bool {
         page < self.pages.len() && !self.has_page(page) && !self.errors.contains_key(&page)
     }
 
-    fn request(&mut self, page: usize) {
-        if !self.needs_request(page) || self.rejected.contains(&page) {
+    fn push_job(
+        &self,
+        jobs: &mut Vec<(usize, usize, String)>,
+        seen: &mut HashSet<usize>,
+        page: usize,
+        visible: bool,
+    ) {
+        if page >= self.pages.len()
+            || !seen.insert(page)
+            || !self.needs_request(page)
+            || (!visible && self.rejected.contains(&page))
+        {
             return;
         }
         let page_info = &self.pages[page];
-        self.prefetch
-            .request(page, page_info.entry, page_info.name.clone());
+        jobs.push((page, page_info.entry, page_info.name.clone()));
     }
 
     /// Resizes a decoded page once to its display size and caches it. The
@@ -600,6 +591,31 @@ mod tests {
             !has_next || next.is_some(),
             next_failed,
         )
+    }
+
+    #[test]
+    fn request_display_orders_visible_then_prefetch() {
+        let mut single = test_viewer(DisplayMode::Single, 10);
+        single.request_display();
+        assert_eq!(single.prefetch.queued_pages(), vec![0, 1]);
+
+        single.go_to(2);
+        single.request_display();
+        assert_eq!(single.prefetch.queued_pages(), vec![2, 3]);
+
+        let mut spread = test_viewer(DisplayMode::Spread, 10);
+        spread.request_display();
+        assert_eq!(spread.prefetch.queued_pages(), vec![0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn rejected_visible_page_is_requested_again() {
+        let mut viewer = test_viewer(DisplayMode::Single, 4);
+        viewer.rejected.insert(0);
+
+        viewer.request_display();
+
+        assert_eq!(viewer.prefetch.queued_pages(), vec![0, 1]);
     }
 
     #[test]

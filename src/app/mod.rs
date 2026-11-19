@@ -72,17 +72,22 @@ impl App {
             }
         }
         debug_log::log(format_args!(
-            "config: mode={} prefetch={} cache_pages={} cache_mb={} scale_filter={} allow_upscale={} debug={}",
+            "config: mode={} prefetch={} cache_pages={} cache_mb={} decode_batch_size={} scale_filter={} allow_upscale={} debug={}",
             config.mode.as_str(),
             config.prefetch,
             config.cache_pages,
             config.cache_mb,
+            config.decode_batch_size,
             config.scale_filter.as_str(),
             config.allow_upscale,
             config.debug
         ));
         let depth = prefetch.unwrap_or(config.prefetch);
         debug_log::log(format_args!("prefetch depth: {depth}"));
+        debug_log::log(format_args!(
+            "decode batch size: {}",
+            config.effective_decode_batch_size()
+        ));
         let cache_limits = CacheLimits {
             entries: config.cache_entries(),
             bytes: config.cache_bytes(),
@@ -163,8 +168,7 @@ impl App {
 
     fn refresh(&mut self) {
         if let Some(viewer) = self.viewer.as_mut() {
-            viewer.request_current();
-            viewer.prefetch_around();
+            viewer.request_display();
         }
         self.update_title();
         self.request_redraw();

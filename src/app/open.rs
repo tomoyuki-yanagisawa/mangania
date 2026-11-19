@@ -54,7 +54,8 @@ impl App {
                     .unwrap_or_else(|| resolved_path.display().to_string());
                 let proxy = self.proxy.clone();
                 let cache = DiskCache::default();
-                let prefetch = Prefetch::start(archive, cache, move || {
+                let decode_batch_size = self.config.effective_decode_batch_size();
+                let prefetch = Prefetch::start(archive, cache, decode_batch_size, move || {
                     proxy.send_event(UserEvent::ImageReady).is_ok()
                 });
                 self.viewer = Some(Viewer::new(
