@@ -123,7 +123,7 @@ fn writes_default_config_on_first_load() {
     let text = std::fs::read_to_string(&path).unwrap();
     assert!(text.contains("prefetch = 2"));
     assert!(text.contains("cache_pages = 8"));
-    assert!(text.contains("cache_mb = 128"));
+    assert!(text.contains("cache_mb = 256"));
     std::fs::remove_dir_all(&dir).unwrap();
 }
 

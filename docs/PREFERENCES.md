@@ -39,7 +39,7 @@ export_dir = "~/Pictures/MangaNia"
 export_name = "{book}_{page:03}"
 prefetch = 2
 cache_pages = 8
-cache_mb = 128
+cache_mb = 256
 scale_filter = "triangle"
 debug = false
 allow_upscale = true
@@ -50,7 +50,7 @@ allow_upscale = true
 - `export_name` の省略時は `{book}_{page:03}`。
 - `prefetch` の省略時は 2。単ページ表示ではページ数、見開き・混合表示では2ページ単位の段数。`--prefetch` が指定された場合は CLI を優先する。
 - `cache_pages` の省略時は 8。`0` も 8 として扱う。各ページは表示サイズの画像を1枚だけ持つ。
-- `cache_mb` の省略時は 128。`0` も 128 として扱う。`cache_pages` とどちらかに達した時点で破棄する。
+- `cache_mb` の省略時は 256。`0` も 256 として扱う。`cache_pages` とどちらかに達した時点で破棄する。
 - ディスクキャッシュは自動削除しない。メニューの「ファイル」>「キャッシュを削除」で手動削除する。
 - `scale_filter` の省略時は `triangle`。`nearest` / `triangle` / `hamming` / `catmull_rom` / `mitchell` / `gaussian` / `lanczos3` を指定できる。不正な値は `triangle` に戻る。
 - `debug` の省略時は `false`。`true` にすると `config.toml` と同じディレクトリの `debug.log` にログを出力する。
@@ -130,7 +130,7 @@ ZIP の展開済みページのディスクキャッシュ:
 ## 4. パフォーマンスとリソース
 
 - 先読み数の既定は 2。単ページ表示ではページ数、見開き・混合表示では2ページ単位の段数として扱う。`config.toml` の `prefetch` で変更できる。
-- メモリキャッシュはページ数と容量の両方で制限する。既定は 8 ページ（1ページ1枚）と 128MiB で、`config.toml` の `cache_pages` と `cache_mb` で変更できる。どちらかに達した時点で破棄する。
+- メモリキャッシュはページ数と容量の両方で制限する。既定は 8 ページ（1ページ1枚）と 256MiB で、`config.toml` の `cache_pages` と `cache_mb` で変更できる。どちらかに達した時点で破棄する。
 - 保持するのはウィンドウに合わせて縮小した表示サイズ画像だけで、原寸のデコード結果はすぐ破棄する。
 - 1つ前・現在・1つ先の表示に必要なページはキャッシュに残し、ソフト上限を超えても保持する。
 - 上限を超えたときは、まず1つ前の表示より過去のページを遠い順に破棄する。次に1つ先の表示より未来のページを遠い順に破棄する。前後1表示と現在のページは破棄しない。同じ距離なら古い挿入を先に破棄する。
