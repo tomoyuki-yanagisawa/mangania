@@ -118,17 +118,8 @@ impl MenuBar {
         view.addItem(&spread);
         view.addItem(&mixed);
         view.addItem(&NSMenuItem::separatorItem(mtm));
-        let fullscreen = check_item_for(
-            mtm,
-            &target,
-            labels::FULLSCREEN,
-            MenuCommand::Action(Action::ToggleFullscreen),
-            false,
-        );
-        view.addItem(&fullscreen);
 
-        let settings = submenu(mtm, &menu, labels::SETTINGS);
-        let filter_menu = submenu(mtm, &settings, labels::FILTERS);
+        let filter_menu = submenu(mtm, &view, labels::FILTERS);
         let mut filters = Vec::with_capacity(ScaleFilter::ALL.len());
         for filter in ScaleFilter::ALL {
             let filter_item = item(
@@ -148,7 +139,16 @@ impl MenuBar {
             MenuCommand::ToggleAllowUpscale,
             allow_upscale,
         );
-        settings.addItem(&allow_upscale_item);
+        view.addItem(&allow_upscale_item);
+        view.addItem(&NSMenuItem::separatorItem(mtm));
+        let fullscreen = check_item_for(
+            mtm,
+            &target,
+            labels::FULLSCREEN,
+            MenuCommand::Action(Action::ToggleFullscreen),
+            false,
+        );
+        view.addItem(&fullscreen);
 
         Self {
             menu,
