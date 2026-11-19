@@ -29,7 +29,6 @@ const SUBCLASS_ID: usize = 1;
 pub(crate) struct MenuBar {
     menu: isize,
     view: isize,
-    settings: isize,
     filters: isize,
     window: Cell<isize>,
     proxy: EventLoopProxy<UserEvent>,
@@ -46,7 +45,6 @@ impl MenuBar {
         let file = outlined(unsafe { CreatePopupMenu() });
         let navigation = outlined(unsafe { CreatePopupMenu() });
         let view = outlined(unsafe { CreatePopupMenu() });
-        let settings = outlined(unsafe { CreatePopupMenu() });
         let filters = outlined(unsafe { CreatePopupMenu() });
         let app = outlined(unsafe { CreatePopupMenu() });
 
@@ -75,12 +73,6 @@ impl MenuBar {
             );
         }
         append_separator(view);
-        append_item(
-            view,
-            MenuCommand::Action(Action::ToggleFullscreen),
-            labels::FULLSCREEN,
-        );
-
         for filter in ScaleFilter::ALL {
             append_item_checked(
                 filters,
@@ -89,24 +81,28 @@ impl MenuBar {
                 filter == current_filter,
             );
         }
-        append_submenu(settings, filters, labels::FILTERS);
+        append_submenu(view, filters, labels::FILTERS);
         append_item_checked(
-            settings,
+            view,
             MenuCommand::ToggleAllowUpscale,
             labels::ALLOW_UPSCALE,
             allow_upscale,
+        );
+        append_separator(view);
+        append_item(
+            view,
+            MenuCommand::Action(Action::ToggleFullscreen),
+            labels::FULLSCREEN,
         );
 
         append_submenu(menu, app, "MangaNia");
         append_submenu(menu, file, labels::FILE);
         append_submenu(menu, navigation, labels::NAVIGATION);
         append_submenu(menu, view, labels::VIEW);
-        append_submenu(menu, settings, labels::SETTINGS);
 
         Self {
             menu,
             view,
-            settings,
             filters,
             window: Cell::new(0),
             proxy,
@@ -158,13 +154,13 @@ impl MenuBar {
         }
         check(
             self.view,
-            MenuCommand::Action(Action::ToggleFullscreen),
-            state.fullscreen,
-        );
-        check(
-            self.settings,
             MenuCommand::ToggleAllowUpscale,
             state.allow_upscale,
+        );
+        check(
+            self.view,
+            MenuCommand::Action(Action::ToggleFullscreen),
+            state.fullscreen,
         );
     }
 

@@ -11,7 +11,6 @@ pub(crate) mod labels {
     pub(crate) const FILE: &str = "ファイル";
     pub(crate) const NAVIGATION: &str = "移動";
     pub(crate) const VIEW: &str = "表示";
-    pub(crate) const SETTINGS: &str = "設定";
     pub(crate) const FILTERS: &str = "縮小フィルタ";
     pub(crate) const ALLOW_UPSCALE: &str = "拡大を許可";
     pub(crate) const SAVE_PAGE: &str = "表示中のページを保存";
@@ -20,14 +19,18 @@ pub(crate) mod labels {
     pub(crate) const QUIT: &str = "終了";
     pub(crate) const NEXT: &str = "次のページ";
     pub(crate) const PREV: &str = "前のページ";
+    pub(crate) const NEXT_SINGLE: &str = "1ページ進む";
+    pub(crate) const PREV_SINGLE: &str = "1ページ戻る";
     pub(crate) const FIRST: &str = "先頭へ";
     pub(crate) const LAST: &str = "末尾へ";
 }
 
 /// Navigation items in menu order.
-pub(crate) const NAVIGATION_ITEMS: [(&str, Action); 4] = [
+pub(crate) const NAVIGATION_ITEMS: [(&str, Action); 6] = [
     (labels::NEXT, Action::Next),
     (labels::PREV, Action::Prev),
+    (labels::NEXT_SINGLE, Action::NextSingle),
+    (labels::PREV_SINGLE, Action::PrevSingle),
     (labels::FIRST, Action::First),
     (labels::LAST, Action::Last),
 ];
