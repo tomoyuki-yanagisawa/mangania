@@ -1,10 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="MangaNia">
-  <g transform="translate(128 128) scale(1.2549019608) translate(-128 -128)">
-    <rect x="26" y="42" width="204" height="172" rx="28" fill="#565b61"/>
-    <rect x="42" y="60" width="172" height="140" rx="16" fill="#e9ebed"/>
-    <g fill="#565b61">
-      <path d="M122 92c-24-16-54-22-76-16v108c22-6 52 0 76 12z"/>
-      <path d="M134 92c24-16 54-22 76-16v108c-22-6-52 0-76 12z"/>
-    </g>
+  <rect width="256" height="256" rx="36" fill="#565b61"/>
+  <rect x="20" y="20" width="216" height="216" rx="20" fill="#ffffff"/>
+  <g fill="#565b61">
+    <path d="M120.5 68.1C90.4 44.8 52.7 36 25.1 44.8v157.7c27.6 -8.8 65.3 0 95.4 17.5z"/>
+    <path d="M135.5 68.1C165.6 44.8 203.3 36 230.9 44.8v157.7c-27.6 -8.8 -65.3 0 -95.4 17.5z"/>
   </g>
 </svg>
