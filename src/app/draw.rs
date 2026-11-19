@@ -161,7 +161,9 @@ impl App {
 
         // Prefetched pages only change the screen when they complete the
         // current display. Redrawing for them would present the same image
-        // again, which looks like a flicker on some systems.
+        // again, which looks like a flicker on some systems. Rebuild the queue
+        // even when the frame does not change so the next pages stay queued.
+        viewer.request_display();
         if viewer.frame().kind() != before {
             self.refresh();
         }

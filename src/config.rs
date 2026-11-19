@@ -8,6 +8,8 @@ pub const DEFAULT_EXPORT_NAME: &str = "{book}_{page:03}";
 pub const DEFAULT_PREFETCH: usize = 2;
 pub const DEFAULT_CACHE_PAGES: usize = 8;
 pub const DEFAULT_CACHE_MB: usize = 256;
+pub const DEFAULT_DECODE_BATCH_SIZE: usize = 2;
+const MAX_DECODE_BATCH_SIZE: usize = 8;
 
 const CONFIG_FILE: &str = "config.toml";
 
@@ -93,6 +95,8 @@ pub struct Config {
     pub prefetch: usize,
     pub cache_pages: usize,
     pub cache_mb: usize,
+    /// Number of pages decoded in parallel. `0` uses the default.
+    pub decode_batch_size: usize,
     pub scale_filter: ScaleFilter,
     pub debug: bool,
     /// Enlarge images smaller than the viewport. When false, pages are only
@@ -109,6 +113,7 @@ impl Default for Config {
             prefetch: DEFAULT_PREFETCH,
             cache_pages: DEFAULT_CACHE_PAGES,
             cache_mb: DEFAULT_CACHE_MB,
+            decode_batch_size: DEFAULT_DECODE_BATCH_SIZE,
             scale_filter: ScaleFilter::default(),
             debug: false,
             allow_upscale: true,
@@ -175,6 +180,7 @@ impl Config {
             "# prefetch: 先読みする段数（単ページ表示はページ数、見開き・混合表示は2ページ単位）\n",
             "# cache_pages: メモリに保持するページ数。0 は既定値\n",
             "# cache_mb: メモリキャッシュ上限（MiB）。0 は既定値\n",
+            "# decode_batch_size: 並列デコードするページ数。0 は既定値\n",
             "# scale_filter: nearest / triangle / hamming / catmull_rom / mitchell / gaussian / lanczos3\n",
             "# debug: true で debug.log にログを出力\n",
             "# allow_upscale: false にすると画面より小さい画像を拡大しない\n",
@@ -206,6 +212,16 @@ impl Config {
 
     pub fn cache_bytes(&self) -> usize {
         cache_value(self.cache_mb, DEFAULT_CACHE_MB).saturating_mul(1024 * 1024)
+    }
+
+    /// Effective decode batch size, bounded by the available cores and the
+    /// memory-safety cap.
+    pub fn effective_decode_batch_size(&self) -> usize {
+        let requested = cache_value(self.decode_batch_size, DEFAULT_DECODE_BATCH_SIZE);
+        let available = std::thread::available_parallelism()
+            .map(|count| count.get())
+            .unwrap_or(1);
+        requested.min(available).clamp(1, MAX_DECODE_BATCH_SIZE)
     }
 }
 

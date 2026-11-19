@@ -34,12 +34,15 @@ pub struct Prefetch {
 }
 
 impl Prefetch {
-    /// Takes ownership of the archive so ZIP reads and decodes never block the UI thread.
+    /// Spawns one queue worker. Up to `batch_size` pages are extracted
+    /// sequentially, then decoded in parallel with scoped threads.
     pub fn start(
         mut archive: Archive,
         cache: DiskCache,
+        batch_size: usize,
         notify: impl Fn() -> bool + Send + 'static,
     ) -> Self {
+        let batch_size = batch_size.max(1);
         let shared = Arc::new(Shared {
             queue: Mutex::new(Queue {
                 jobs: VecDeque::new(),
@@ -47,12 +50,12 @@ impl Prefetch {
             }),
             ready: Condvar::new(),
         });
-        let (sender, results) = mpsc::sync_channel(1);
+        let (sender, results) = mpsc::sync_channel(batch_size);
         let worker_shared = Arc::clone(&shared);
         thread::spawn(move || {
-            debug_log::log(format_args!("worker: started"));
+            debug_log::log(format_args!("worker: started batch_size={batch_size}"));
             loop {
-                let job = {
+                let first = {
                     let mut queue = worker_shared.queue.lock().unwrap();
                     loop {
                         if queue.closed {
@@ -66,52 +69,102 @@ impl Prefetch {
                     }
                 };
 
-                let started = Instant::now();
-                debug_log::log(format_args!(
-                    "job start: page={} entry={}",
-                    job.page + 1,
-                    job.entry
-                ));
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let mut jobs = vec![first];
+                {
+                    let mut queue = worker_shared.queue.lock().unwrap();
+                    while jobs.len() < batch_size {
+                        let Some(job) = queue.jobs.pop_front() else {
+                            break;
+                        };
+                        jobs.push(job);
+                    }
+                }
+
+                let mut extracted = Vec::with_capacity(jobs.len());
+                for job in jobs {
+                    let started = Instant::now();
+                    debug_log::log(format_args!(
+                        "job start: page={} entry={} batch={}",
+                        job.page + 1,
+                        job.entry,
+                        extracted.len() + 1
+                    ));
                     let page = Page {
                         name: job.name.clone(),
                         entry: job.entry,
                     };
-                    let file = cache.page_path(&mut archive, &page)?;
-                    let image = decode_page(&cache, &file)?;
-                    debug_log::log(format_args!(
-                        "job decode: page={} {}x{} in {:.1}ms",
-                        job.page + 1,
-                        image.width(),
-                        image.height(),
-                        started.elapsed().as_secs_f64() * 1000.0
-                    ));
-                    Ok(Arc::new(image))
-                }));
+                    let file = cache.page_path(&mut archive, &page);
+                    extracted.push((job, file, started));
+                }
 
-                let result = match result {
-                    Ok(result) => result,
-                    Err(payload) => {
-                        let message = panic_message(payload);
-                        debug_log::log(format_args!("job panic: page={} {message}", job.page + 1));
-                        Err(format!("decode panicked: {message}"))
+                let mut keep_going = true;
+                thread::scope(|scope| {
+                    let mut handles = Vec::with_capacity(extracted.len());
+                    for (job, file, started) in extracted {
+                        let cache = &cache;
+                        let page = job.page;
+                        handles.push((
+                            page,
+                            started,
+                            scope.spawn(move || {
+                                let result = match file {
+                                    Ok(file) => {
+                                        match std::panic::catch_unwind(
+                                            std::panic::AssertUnwindSafe(|| {
+                                                let image = decode_page(cache, &file)?;
+                                                debug_log::log(format_args!(
+                                                    "job decode: page={} {}x{} in {:.1}ms",
+                                                    page + 1,
+                                                    image.width(),
+                                                    image.height(),
+                                                    started.elapsed().as_secs_f64() * 1000.0
+                                                ));
+                                                Ok(Arc::new(image))
+                                            }),
+                                        ) {
+                                            Ok(result) => result,
+                                            Err(payload) => Err(format!(
+                                                "decode panicked: {}",
+                                                panic_message(payload)
+                                            )),
+                                        }
+                                    }
+                                    Err(error) => Err(error),
+                                };
+                                (page, result)
+                            }),
+                        ));
                     }
-                };
 
-                if let Err(error) = &result {
-                    debug_log::log(format_args!("job failed: page={} {error}", job.page + 1));
-                }
-                if sender.send((job.page, result)).is_err() {
-                    debug_log::log(format_args!("worker: result receiver dropped"));
-                    return;
-                }
-                debug_log::log(format_args!(
-                    "job done: page={} in {:.1}ms",
-                    job.page + 1,
-                    started.elapsed().as_secs_f64() * 1000.0
-                ));
-                if !notify() {
-                    debug_log::log(format_args!("worker: notify failed"));
+                    for (page, started, handle) in handles {
+                        let result = match handle.join() {
+                            Ok((_, result)) => result,
+                            Err(payload) => {
+                                Err(format!("decode panicked: {}", panic_message(payload)))
+                            }
+                        };
+                        if let Err(error) = &result {
+                            debug_log::log(format_args!("job failed: page={} {error}", page + 1));
+                        }
+                        if sender.send((page, result)).is_err() {
+                            debug_log::log(format_args!("worker: result receiver dropped"));
+                            keep_going = false;
+                            break;
+                        }
+                        debug_log::log(format_args!(
+                            "job done: page={} in {:.1}ms",
+                            page + 1,
+                            started.elapsed().as_secs_f64() * 1000.0
+                        ));
+                        if !notify() {
+                            debug_log::log(format_args!("worker: notify failed"));
+                            keep_going = false;
+                            break;
+                        }
+                    }
+                });
+
+                if !keep_going {
                     return;
                 }
             }
@@ -124,46 +177,26 @@ impl Prefetch {
         }
     }
 
-    pub fn request(&mut self, page: usize, entry: usize, name: String) {
-        debug_log::log(format_args!("request: page={} entry={}", page + 1, entry));
+    /// Replaces the queued jobs with `jobs` in decode order. The caller puts
+    /// visible pages first, followed by prefetch pages. Running jobs are kept;
+    /// their results still arrive. Cached pages are simply not enqueued.
+    pub fn set_jobs(&mut self, jobs: Vec<(usize, usize, String)>) {
         let mut queue = self.shared.queue.lock().unwrap();
         if queue.closed {
             return;
         }
-        if !self.in_flight.insert(page) {
-            return;
-        }
-        queue.jobs.push_back(Job { page, entry, name });
-        drop(queue);
-        self.shared.ready.notify_one();
-    }
-
-    /// Queues several urgent jobs at once. Queued (not yet running) jobs are
-    /// discarded once, so the batch starts next without dropping its own
-    /// members. The first item runs first.
-    pub fn request_batch(&mut self, jobs: Vec<(usize, usize, String)>) {
-        if jobs.is_empty() {
-            return;
-        }
-        let mut queue = self.shared.queue.lock().unwrap();
-        if queue.closed {
-            return;
-        }
-        // Drop queued (not yet running) jobs so the current pages start next.
+        // Queued jobs are only page metadata. Rebuilding them is cheap and
+        // drops pages that are no longer near the current position.
         while let Some(job) = queue.jobs.pop_front() {
             self.in_flight.remove(&job.page);
         }
-        for (page, entry, name) in jobs.into_iter().rev() {
+        for (page, entry, name) in jobs {
             if self.in_flight.contains(&page) {
                 continue;
             }
-            debug_log::log(format_args!(
-                "request: page={} entry={} urgent=batch",
-                page + 1,
-                entry
-            ));
+            debug_log::log(format_args!("request: page={} entry={}", page + 1, entry));
             self.in_flight.insert(page);
-            queue.jobs.push_front(Job { page, entry, name });
+            queue.jobs.push_back(Job { page, entry, name });
         }
         drop(queue);
         self.shared.ready.notify_one();
@@ -212,6 +245,18 @@ impl Prefetch {
             results,
             in_flight: HashSet::new(),
         }
+    }
+
+    /// Pages currently queued, in worker order. For tests that inspect ordering.
+    pub(crate) fn queued_pages(&self) -> Vec<usize> {
+        self.shared
+            .queue
+            .lock()
+            .unwrap()
+            .jobs
+            .iter()
+            .map(|job| job.page)
+            .collect()
     }
 }
 
