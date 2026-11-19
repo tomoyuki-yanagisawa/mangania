@@ -104,6 +104,15 @@ impl App {
         self.refresh();
     }
 
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    fn set_allow_upscale(&mut self, allow_upscale: bool) {
+        self.config.allow_upscale = allow_upscale;
+        self.config.save();
+        self.sync_viewport();
+        self.sync_menu();
+        self.refresh();
+    }
+
     pub(super) fn set_fullscreen(&mut self, fullscreen: bool) {
         if let Some(window) = &self.window {
             window.winit().set_fullscreen(if fullscreen {
@@ -131,6 +140,7 @@ impl App {
                 mode: self.config.mode,
                 filter: self.config.scale_filter,
                 fullscreen: self.is_fullscreen(),
+                allow_upscale: self.config.allow_upscale,
             });
         }
     }
@@ -160,6 +170,10 @@ impl App {
             MenuCommand::SetScaleFilter(filter) => self.set_scale_filter(filter),
             MenuCommand::ClearDiskCache => self.clear_disk_cache(),
             MenuCommand::ExitApplication => event_loop.exit(),
+            MenuCommand::ToggleAllowUpscale => {
+                let allow_upscale = !self.config.allow_upscale;
+                self.set_allow_upscale(allow_upscale);
+            }
         }
     }
 }
