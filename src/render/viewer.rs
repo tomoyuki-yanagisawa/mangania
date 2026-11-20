@@ -6,43 +6,13 @@ use std::sync::Arc;
 use image::RgbaImage;
 
 use crate::archive::Page;
-use crate::config::{DisplayMode, ScaleFilter};
+use crate::config::DisplayMode;
 use crate::debug_log;
 use crate::input::navigation;
 use crate::render::cache::PageCache;
-use crate::render::image::{fit, resized};
+use crate::render::image::PreparedPage;
 use crate::render::prefetch::Prefetch;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Viewport {
-    width: u32,
-    height: u32,
-    filter: ScaleFilter,
-    mode: DisplayMode,
-    allow_upscale: bool,
-}
-
-impl Viewport {
-    pub(crate) fn new(
-        width: u32,
-        height: u32,
-        filter: ScaleFilter,
-        mode: DisplayMode,
-        allow_upscale: bool,
-    ) -> Self {
-        Self {
-            width,
-            height,
-            filter,
-            mode,
-            allow_upscale,
-        }
-    }
-
-    pub(crate) fn is_empty(self) -> bool {
-        self.width == 0 || self.height == 0
-    }
-}
+use crate::render::viewport::{Orientation, Viewport};
 
 /// Memory cache limits. Whichever is reached first evicts entries.
 #[derive(Clone, Copy, Debug)]
@@ -111,22 +81,6 @@ impl Frame {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Orientation {
-    Portrait,
-    Landscape,
-}
-
-impl Orientation {
-    fn from_size(width: u32, height: u32) -> Self {
-        if height > width {
-            Self::Portrait
-        } else {
-            Self::Landscape
-        }
-    }
-}
-
 /// Per-page state that survives display-cache clears.
 #[derive(Default, Clone)]
 struct PageState {
@@ -135,6 +89,8 @@ struct PageState {
     /// The decoded page was not kept in the display cache. Prefetching skips
     /// it until it becomes visible; evicting a cached page does not set it.
     rejected: bool,
+    /// A transient cache failure was already retried once.
+    retried: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -232,6 +188,7 @@ impl Viewer {
         self.cache.clear();
         for state in &mut self.states {
             state.rejected = false;
+            state.retried = false;
         }
         self.prefetch.clear_pending();
         debug_log::log(format_args!(
@@ -258,7 +215,7 @@ impl Viewer {
         for page in prefetch_targets(current, self.pages.len(), self.depth, self.viewport.mode) {
             self.push_job(&mut jobs, &mut seen, page, false);
         }
-        self.prefetch.set_jobs(jobs);
+        self.prefetch.set_jobs(self.viewport, jobs);
     }
 
     fn needs_request(&self, page: usize) -> bool {
@@ -283,58 +240,32 @@ impl Viewer {
         jobs.push((page, page_info.entry, page_info.name.clone()));
     }
 
-    /// Resizes a decoded page once to its display size and caches it. The
-    /// display size depends only on the page's own orientation, so pairing it
-    /// with a different neighbour never requires resizing it again. The
-    /// decoded original is dropped.
-    pub(crate) fn insert_decoded(&mut self, page: usize, image: Arc<RgbaImage>) {
-        let (width, height) = image.dimensions();
-        let orientation = Orientation::from_size(width, height);
-        self.states[page].orientation = Some(orientation);
-        let (cell_width, cell_height) = display_size(self.viewport, orientation);
-        let target = fit(
-            width,
-            height,
-            cell_width as usize,
-            cell_height as usize,
-            self.viewport.allow_upscale,
-        );
-        if target.0 == 0 || target.1 == 0 {
-            // A page that cannot be fitted will never be displayable. Record
-            // it as an error so waiting does not retry it forever.
-            debug_log::log(format_args!(
-                "viewer: page={} source={}x{} cannot be fitted for display",
-                page + 1,
-                width,
-                height
-            ));
-            self.states[page].rejected = false;
-            self.states[page].error = Some(format!("cannot fit {width}x{height} page for display"));
-            return;
+    /// Stores a page the worker prepared for `viewport`. Results prepared for
+    /// another viewport are stale: the page is requested again for the new
+    /// target, so keeping them would show an image at the wrong size.
+    pub(crate) fn insert_prepared(
+        &mut self,
+        page: usize,
+        viewport: Viewport,
+        prepared: PreparedPage,
+    ) -> bool {
+        if viewport != self.viewport {
+            return false;
         }
-
-        let display = if target == image.dimensions() {
-            image
-        } else {
-            resized(&image, target, self.viewport.filter)
-        };
-        let display_size = display.dimensions();
+        self.states[page].orientation = Some(prepared.orientation);
+        self.states[page].retried = false;
         let step = if self.viewport.mode == DisplayMode::Single {
             1
         } else {
             2
         };
-        let retained = self.cache.insert(page, display, self.current, step);
+        let retained = self.cache.insert(page, prepared.image, self.current, step);
         self.states[page].rejected = !retained;
         debug_log::log(format_args!(
-            "viewer: display page={} {}x{} -> {}x{} filter={} cached={retained}",
-            page + 1,
-            width,
-            height,
-            display_size.0,
-            display_size.1,
-            self.viewport.filter.as_str()
+            "viewer: display page={} cached={retained}",
+            page + 1
         ));
+        true
     }
 
     pub(crate) fn has_page(&self, page: usize) -> bool {
@@ -391,11 +322,38 @@ impl Viewer {
             .and_then(|state| state.error.as_deref())
     }
 
-    pub(crate) fn fail_page(&mut self, page: usize, error: String) {
+    pub(crate) fn fail_page(&mut self, page: usize, viewport: Viewport, error: String) -> bool {
+        if viewport != self.viewport {
+            return false;
+        }
         if let Some(state) = self.states.get_mut(page) {
             state.error = Some(error);
             state.rejected = false;
         }
+        true
+    }
+
+    /// Records a transient cache failure. The page is requested again when it
+    /// is visible; a second failure becomes a normal error so a broken entry
+    /// cannot loop.
+    pub(crate) fn retry_page(&mut self, page: usize, viewport: Viewport, message: String) -> bool {
+        if viewport != self.viewport {
+            return false;
+        }
+        let Some(state) = self.states.get_mut(page) else {
+            return false;
+        };
+        state.rejected = true;
+        if state.retried {
+            state.error = Some(message);
+        } else {
+            state.retried = true;
+            debug_log::log(format_args!(
+                "viewer: page={} cache failure, retrying: {message}",
+                page + 1
+            ));
+        }
+        true
     }
 
     /// Returns the frame to draw. A spread stays `Loading` until both pages
@@ -510,21 +468,6 @@ fn step_mixed(
         Some(current - 2)
     } else {
         Some(current - 1)
-    }
-}
-
-/// Size of the display image for a page. Single pages use the whole window.
-/// Spread pages use one half of the window. Mixed mode chooses by the page's
-/// own orientation, never by its neighbour.
-fn display_size(viewport: Viewport, orientation: Orientation) -> (u32, u32) {
-    let half = || ((viewport.width / 2).max(1), viewport.height);
-    match viewport.mode {
-        DisplayMode::Single => (viewport.width, viewport.height),
-        DisplayMode::Spread => half(),
-        DisplayMode::Mixed => match orientation {
-            Orientation::Portrait => half(),
-            Orientation::Landscape => (viewport.width, viewport.height),
-        },
     }
 }
 
