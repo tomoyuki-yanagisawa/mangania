@@ -7,12 +7,14 @@ use crate::export;
 use crate::render::prefetch::Prefetch;
 use crate::render::viewer::{CacheLimits, Viewer};
 use crate::storage::disk_cache::DiskCache;
+use crate::storage::warm_cache::CacheWarmer;
 
 use super::App;
 
 impl App {
     pub(super) fn open(&mut self, path: &Path) {
         debug_log::log(format_args!("open requested: {}", path.display()));
+        self.warmer = None;
         self.open_generation = self.open_generation.wrapping_add(1);
         let generation = self.open_generation;
         let path = path.to_owned();
@@ -47,6 +49,11 @@ impl App {
                     return;
                 }
 
+                let warmer = if self.config.warm_cache {
+                    CacheWarmer::start(&archive)
+                } else {
+                    None
+                };
                 let pages = std::mem::take(&mut archive.pages);
                 let proxy = self.proxy.clone();
                 let cache = DiskCache::default();
@@ -66,6 +73,7 @@ impl App {
                     cache_limits,
                     self.viewport(),
                 ));
+                self.warmer = warmer;
                 self.viewer_generation = self.viewer_generation.wrapping_add(1);
                 self.error = None;
                 self.status = None;

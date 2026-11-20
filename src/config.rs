@@ -99,6 +99,8 @@ pub struct Config {
     pub decode_batch_size: usize,
     pub scale_filter: ScaleFilter,
     pub debug: bool,
+    /// Extract ZIP pages into the disk cache in the background.
+    pub warm_cache: bool,
     /// Enlarge images smaller than the viewport. When false, pages are only
     /// ever shrunk.
     pub allow_upscale: bool,
@@ -116,6 +118,7 @@ impl Default for Config {
             decode_batch_size: DEFAULT_DECODE_BATCH_SIZE,
             scale_filter: ScaleFilter::default(),
             debug: false,
+            warm_cache: true,
             allow_upscale: true,
         }
     }
@@ -183,6 +186,7 @@ impl Config {
             "# decode_batch_size: 並列デコードするページ数。0 は既定値\n",
             "# scale_filter: nearest / triangle / hamming / catmull_rom / mitchell / gaussian / lanczos3\n",
             "# debug: true で debug.log にログを出力\n",
+            "# warm_cache: true で ZIP 全体をバックグラウンドでディスクキャッシュへ展開\n",
             "# allow_upscale: false にすると画面より小さい画像を拡大しない\n",
             "\n",
         ));

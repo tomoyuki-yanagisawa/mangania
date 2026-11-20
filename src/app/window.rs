@@ -242,6 +242,7 @@ impl App {
 
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     fn clear_disk_cache(&mut self) {
+        self.warmer = None;
         let cache = DiskCache::default();
         match cache.clear() {
             Ok(()) => {

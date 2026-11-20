@@ -152,6 +152,15 @@ impl Archive {
         }
     }
 
+    /// Opens a second handle to the same source. Used by the background cache
+    /// warmer so it does not block the display/decode worker.
+    pub(crate) fn reopen(&self) -> Result<Self, String> {
+        match &self.source {
+            Source::Zip(_) => Self::open(&self.path),
+            Source::Directory { .. } => Self::open_directory(&self.path),
+        }
+    }
+
     /// Returns ZIP metadata used by the disk cache key and extraction path.
     pub fn entry_info(&mut self, entry: usize) -> Result<EntryInfo, String> {
         let Source::Zip(zip) = &mut self.source else {
