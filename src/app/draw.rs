@@ -1,5 +1,7 @@
 use crate::debug_log;
-use crate::render::viewer::{Frame, Viewport};
+use crate::render::prefetch::PageError;
+use crate::render::viewer::Frame;
+use crate::render::viewport::Viewport;
 
 use super::App;
 
@@ -69,28 +71,39 @@ impl App {
             return;
         };
 
+        let cleared = viewer.prefetch.poll_cleared();
         let results = viewer.prefetch.poll();
-        if results.is_empty() {
+        if results.is_empty() && cleared.is_empty() {
             return;
         }
 
         let before = viewer.frame().kind();
-        for (page, result) in results {
-            match result {
-                Ok(image) => {
+        for completed in results {
+            match completed.result {
+                Ok(prepared) => {
                     debug_log::log(format_args!(
                         "page {} ready: {}x{} ({} bytes)",
-                        page + 1,
-                        image.width(),
-                        image.height(),
-                        image.as_raw().len()
+                        completed.page + 1,
+                        prepared.image.width(),
+                        prepared.image.height(),
+                        prepared.image.as_raw().len()
                     ));
-                    viewer.insert_decoded(page, image);
+                    viewer.insert_prepared(completed.page, completed.viewport, prepared);
                 }
-                Err(message) => {
-                    eprintln!("mangania: page {}: {message}", page + 1);
-                    debug_log::log(format_args!("page {} failed: {message}", page + 1));
-                    viewer.fail_page(page, message);
+                Err(PageError::Page(message)) => {
+                    eprintln!("mangania: page {}: {message}", completed.page + 1);
+                    debug_log::log(format_args!(
+                        "page {} failed: {message}",
+                        completed.page + 1
+                    ));
+                    viewer.fail_page(completed.page, completed.viewport, message);
+                }
+                Err(PageError::Cache(message)) => {
+                    debug_log::log(format_args!(
+                        "page {} cache error: {message}",
+                        completed.page + 1
+                    ));
+                    viewer.retry_page(completed.page, completed.viewport, message);
                 }
             }
         }
@@ -100,7 +113,15 @@ impl App {
         // again, which looks like a flicker on some systems. Rebuild the queue
         // even when the frame does not change so the next pages stay queued.
         viewer.request_display();
-        if viewer.frame().kind() != before {
+        let frame_changed = viewer.frame().kind() != before;
+        if let Some(result) = cleared.into_iter().last() {
+            self.status = Some(match result {
+                Ok(()) => "disk cache cleared".to_string(),
+                Err(error) => format!("cache clear error: {error}"),
+            });
+            self.update_title();
+        }
+        if frame_changed {
             self.refresh();
         }
     }

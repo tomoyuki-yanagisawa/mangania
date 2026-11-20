@@ -242,6 +242,17 @@ impl App {
 
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     fn clear_disk_cache(&mut self) {
+        // The worker owns the disk cache, so route the deletion through it to
+        // avoid racing with an extraction in progress.
+        if self.viewer.is_some() {
+            if let Some(viewer) = self.viewer.as_mut() {
+                viewer.prefetch.clear_cache();
+            }
+            self.status = Some("clearing disk cache...".to_string());
+            self.update_title();
+            self.request_redraw();
+            return;
+        }
         let cache = DiskCache::default();
         match cache.clear() {
             Ok(()) => {

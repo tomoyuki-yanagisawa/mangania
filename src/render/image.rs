@@ -7,6 +7,7 @@ use image::RgbaImage;
 
 use crate::config::ScaleFilter;
 use crate::debug_log;
+use crate::render::viewport::{Orientation, Viewport, display_size};
 
 const BACKGROUND: u32 = 0x20_20_20;
 
@@ -132,6 +133,39 @@ fn blit(
     }
 }
 
+/// A decoded page resized for the current display target.
+pub struct PreparedPage {
+    pub image: Arc<RgbaImage>,
+    pub orientation: Orientation,
+}
+
+/// Resizes a decoded page once to its display size.
+///
+/// The display size depends only on the page's own orientation, so pairing it
+/// with a different neighbour never requires resizing it again. The decoded
+/// original is dropped.
+pub(crate) fn prepare(image: RgbaImage, viewport: Viewport) -> Result<PreparedPage, String> {
+    let (width, height) = image.dimensions();
+    let orientation = Orientation::from_size(width, height);
+    let (cell_width, cell_height) = display_size(viewport, orientation);
+    let target = fit(
+        width,
+        height,
+        cell_width as usize,
+        cell_height as usize,
+        viewport.allow_upscale,
+    );
+    if target.0 == 0 || target.1 == 0 {
+        return Err(format!("cannot fit {width}x{height} page for display"));
+    }
+    let image = if target == image.dimensions() {
+        Arc::new(image)
+    } else {
+        resized(&image, target, viewport.filter)
+    };
+    Ok(PreparedPage { image, orientation })
+}
+
 /// Resizes an image to a display target and logs the cost.
 pub(crate) fn resized(
     image: &RgbaImage,
@@ -180,8 +214,51 @@ fn resize_algorithm(filter: ScaleFilter) -> ResizeAlg {
 mod tests {
     use image::{Rgba, RgbaImage};
 
-    use super::resized;
-    use crate::config::ScaleFilter;
+    use super::{prepare, resized};
+    use crate::config::{DisplayMode, ScaleFilter};
+    use crate::render::viewport::{Orientation, Viewport};
+
+    fn viewport(mode: DisplayMode, allow_upscale: bool) -> Viewport {
+        Viewport::new(1200, 900, ScaleFilter::Triangle, mode, allow_upscale)
+    }
+
+    #[test]
+    fn prepare_uses_the_display_size_for_the_orientation() {
+        let prepared = prepare(
+            RgbaImage::new(600, 900),
+            viewport(DisplayMode::Spread, true),
+        )
+        .expect("prepare portrait");
+        assert_eq!(prepared.orientation, Orientation::Portrait);
+        assert_eq!(prepared.image.dimensions(), (600, 900));
+
+        let prepared = prepare(
+            RgbaImage::new(1200, 600),
+            viewport(DisplayMode::Spread, true),
+        )
+        .expect("prepare landscape");
+        assert_eq!(prepared.orientation, Orientation::Landscape);
+        assert_eq!(prepared.image.dimensions(), (600, 300));
+    }
+
+    #[test]
+    fn prepare_enlarges_only_when_allowed() {
+        let enlarged = prepare(RgbaImage::new(100, 60), viewport(DisplayMode::Single, true))
+            .expect("prepare enlarged");
+        assert_eq!(enlarged.image.dimensions(), (1200, 720));
+
+        let kept = prepare(
+            RgbaImage::new(100, 60),
+            viewport(DisplayMode::Single, false),
+        )
+        .expect("prepare kept");
+        assert_eq!(kept.image.dimensions(), (100, 60));
+    }
+
+    #[test]
+    fn prepare_rejects_a_zero_sized_page() {
+        assert!(prepare(RgbaImage::new(0, 0), viewport(DisplayMode::Single, true)).is_err());
+    }
 
     #[test]
     fn resizes_with_every_filter() {
