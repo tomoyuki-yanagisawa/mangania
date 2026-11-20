@@ -130,7 +130,7 @@ impl App {
                 format!("{start}/{}", viewer.pages.len())
             };
             let mut title = format!("MangaNia - {} - {pages}", viewer.name());
-            if let Some(message) = viewer.errors.get(&viewer.current) {
+            if let Some(message) = viewer.error(viewer.current) {
                 title.push_str(" - error: ");
                 title.extend(message.chars().take(120));
             } else if viewer.is_loading() {

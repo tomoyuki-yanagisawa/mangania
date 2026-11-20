@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -127,6 +127,16 @@ impl Orientation {
     }
 }
 
+/// Per-page state that survives display-cache clears.
+#[derive(Default, Clone)]
+struct PageState {
+    orientation: Option<Orientation>,
+    error: Option<String>,
+    /// The decoded page was not kept in the display cache. Prefetching skips
+    /// it until it becomes visible; evicting a cached page does not set it.
+    rejected: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Layout {
     /// One page in the middle of the window.
@@ -143,16 +153,8 @@ pub(crate) struct Viewer {
     pub(crate) current: usize,
     pub(crate) prefetch: Prefetch,
     pub(crate) cache: PageCache,
-    pub(crate) errors: HashMap<usize, String>,
-    /// Page orientation, recorded when the page is decoded. It survives cache
-    /// clears because it does not depend on the window size or display mode.
-    orientations: HashMap<usize, Orientation>,
-    /// Pages whose decoded image could not be kept in the cache. Prefetching
-    /// skips them so it does not decode the same page in a loop. Pages that
-    /// are on screen are still requested when missing, even after a rejection.
-    /// Pages that were cached and later evicted are not listed, so a later
-    /// prefetch can request them again.
-    rejected: HashSet<usize>,
+    /// Per-page state, indexed by page number.
+    states: Vec<PageState>,
     depth: usize,
     viewport: Viewport,
 }
@@ -166,15 +168,14 @@ impl Viewer {
         cache_limits: CacheLimits,
         viewport: Viewport,
     ) -> Self {
+        let states = vec![PageState::default(); pages.len()];
         Self {
             path,
             pages,
             current: 0,
             prefetch,
             cache: PageCache::new(cache_limits.entries, cache_limits.bytes),
-            errors: HashMap::new(),
-            orientations: HashMap::new(),
-            rejected: HashSet::new(),
+            states,
             depth,
             viewport,
         }
@@ -229,7 +230,9 @@ impl Viewer {
         }
         self.viewport = viewport;
         self.cache.clear();
-        self.rejected.clear();
+        for state in &mut self.states {
+            state.rejected = false;
+        }
         self.prefetch.clear_pending();
         debug_log::log(format_args!(
             "viewer: viewport {}x{} filter={} mode={} upscale={} cache cleared",
@@ -259,7 +262,7 @@ impl Viewer {
     }
 
     fn needs_request(&self, page: usize) -> bool {
-        page < self.pages.len() && !self.has_page(page) && !self.errors.contains_key(&page)
+        page < self.pages.len() && !self.has_page(page) && self.error(page).is_none()
     }
 
     fn push_job(
@@ -272,7 +275,7 @@ impl Viewer {
         if page >= self.pages.len()
             || !seen.insert(page)
             || !self.needs_request(page)
-            || (!visible && self.rejected.contains(&page))
+            || (!visible && self.states[page].rejected)
         {
             return;
         }
@@ -287,7 +290,7 @@ impl Viewer {
     pub(crate) fn insert_decoded(&mut self, page: usize, image: Arc<RgbaImage>) {
         let (width, height) = image.dimensions();
         let orientation = Orientation::from_size(width, height);
-        self.orientations.insert(page, orientation);
+        self.states[page].orientation = Some(orientation);
         let (cell_width, cell_height) = display_size(self.viewport, orientation);
         let target = fit(
             width,
@@ -305,11 +308,8 @@ impl Viewer {
                 width,
                 height
             ));
-            self.rejected.remove(&page);
-            self.errors.insert(
-                page,
-                format!("cannot fit {width}x{height} page for display"),
-            );
+            self.states[page].rejected = false;
+            self.states[page].error = Some(format!("cannot fit {width}x{height} page for display"));
             return;
         }
 
@@ -325,11 +325,7 @@ impl Viewer {
             2
         };
         let retained = self.cache.insert(page, display, self.current, step);
-        if retained {
-            self.rejected.remove(&page);
-        } else {
-            self.rejected.insert(page);
-        }
+        self.states[page].rejected = !retained;
         debug_log::log(format_args!(
             "viewer: display page={} {}x{} -> {}x{} filter={} cached={retained}",
             page + 1,
@@ -346,7 +342,7 @@ impl Viewer {
     }
 
     fn orientation(&self, page: usize) -> Option<Orientation> {
-        self.orientations.get(&page).copied()
+        self.states.get(page).and_then(|state| state.orientation)
     }
 
     fn layout(&self) -> Layout {
@@ -389,11 +385,24 @@ impl Viewer {
         matches!(self.frame(), Frame::Loading)
     }
 
+    pub(crate) fn error(&self, page: usize) -> Option<&str> {
+        self.states
+            .get(page)
+            .and_then(|state| state.error.as_deref())
+    }
+
+    pub(crate) fn fail_page(&mut self, page: usize, error: String) {
+        if let Some(state) = self.states.get_mut(page) {
+            state.error = Some(error);
+            state.rejected = false;
+        }
+    }
+
     /// Returns the frame to draw. A spread stays `Loading` until both pages
     /// are cached, so the previous frame remains on screen instead of showing
     /// a right-only frame that gains a left page a moment later.
     pub(crate) fn frame(&self) -> Frame {
-        if self.errors.contains_key(&self.current) {
+        if self.error(self.current).is_some() {
             return Frame::Failed;
         }
         let Some(right) = self.cache.get(self.current) else {
@@ -406,7 +415,7 @@ impl Viewer {
             right,
             self.cache.get(next),
             !has_next || self.orientation(next).is_some(),
-            self.errors.contains_key(&next),
+            self.error(next).is_some(),
         )
     }
 }
@@ -616,7 +625,7 @@ mod tests {
     #[test]
     fn rejected_visible_page_is_requested_again() {
         let mut viewer = test_viewer(DisplayMode::Single, 4);
-        viewer.rejected.insert(0);
+        viewer.states[0].rejected = true;
 
         viewer.request_display();
 
@@ -628,7 +637,7 @@ mod tests {
         let mut viewer = test_viewer(DisplayMode::Single, 4);
         assert!(matches!(viewer.frame(), Frame::Loading));
 
-        viewer.errors.insert(0, "failed".to_string());
+        viewer.fail_page(0, "failed".to_string());
         assert!(matches!(viewer.frame(), Frame::Failed));
         assert!(!viewer.is_loading());
     }
@@ -858,11 +867,11 @@ mod tests {
     fn rejected_left_page_still_waits_for_its_image() {
         let mut viewer = test_viewer(DisplayMode::Spread, 4);
         viewer.insert_decoded(0, portrait());
-        viewer.rejected.insert(1);
+        viewer.states[1].rejected = true;
 
         assert!(matches!(viewer.frame(), Frame::Loading));
 
-        viewer.errors.insert(1, "failed".to_string());
+        viewer.fail_page(1, "failed".to_string());
         assert!(matches!(viewer.frame(), Frame::RightOnly(_)));
     }
 
@@ -871,8 +880,8 @@ mod tests {
         let mut viewer = test_viewer(DisplayMode::Spread, 4);
         viewer.insert_decoded(0, Arc::new(RgbaImage::new(0, 0)));
 
-        assert!(viewer.errors.contains_key(&0));
-        assert!(!viewer.rejected.contains(&0));
+        assert!(viewer.error(0).is_some());
+        assert!(!viewer.states[0].rejected);
         assert!(!viewer.needs_request(0));
     }
 
@@ -952,8 +961,8 @@ mod tests {
     #[test]
     fn displayed_partner_follows_the_shown_spread() {
         let mut spread = test_viewer(DisplayMode::Spread, 2);
-        spread.orientations.insert(0, Orientation::Portrait);
-        spread.orientations.insert(1, Orientation::Portrait);
+        spread.states[0].orientation = Some(Orientation::Portrait);
+        spread.states[1].orientation = Some(Orientation::Portrait);
         assert_eq!(spread.displayed_partner(), Some(1));
         assert_eq!(spread.page_range(), (1, 2));
 
@@ -967,11 +976,11 @@ mod tests {
         );
 
         let mut mixed = test_viewer(DisplayMode::Mixed, 2);
-        mixed.orientations.insert(0, Orientation::Portrait);
-        mixed.orientations.insert(1, Orientation::Landscape);
+        mixed.states[0].orientation = Some(Orientation::Portrait);
+        mixed.states[1].orientation = Some(Orientation::Landscape);
         assert_eq!(mixed.displayed_partner(), None);
 
-        mixed.orientations.insert(1, Orientation::Portrait);
+        mixed.states[1].orientation = Some(Orientation::Portrait);
         assert_eq!(mixed.displayed_partner(), Some(1));
     }
 
