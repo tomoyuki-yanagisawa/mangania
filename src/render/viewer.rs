@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -137,7 +138,6 @@ enum Layout {
 }
 
 pub(crate) struct Viewer {
-    pub(crate) file_name: String,
     pub(crate) path: PathBuf,
     pub(crate) pages: Vec<Page>,
     pub(crate) current: usize,
@@ -159,7 +159,6 @@ pub(crate) struct Viewer {
 
 impl Viewer {
     pub(crate) fn new(
-        file_name: String,
         path: PathBuf,
         pages: Vec<Page>,
         prefetch: Prefetch,
@@ -168,7 +167,6 @@ impl Viewer {
         viewport: Viewport,
     ) -> Self {
         Self {
-            file_name,
             path,
             pages,
             current: 0,
@@ -378,6 +376,14 @@ impl Viewer {
         (start, end)
     }
 
+    /// File or directory name shown in the title bar.
+    pub(crate) fn name(&self) -> Cow<'_, str> {
+        self.path
+            .file_name()
+            .map(|name| name.to_string_lossy())
+            .unwrap_or_else(|| Cow::Owned(self.path.display().to_string()))
+    }
+
     /// True while the current display is waiting for a page image.
     pub(crate) fn is_loading(&self) -> bool {
         matches!(self.frame(), Frame::Loading)
@@ -558,7 +564,6 @@ mod tests {
             })
             .collect();
         Viewer::new(
-            "test.zip".to_string(),
             PathBuf::from("test.zip"),
             pages,
             Prefetch::idle(),

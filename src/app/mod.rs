@@ -35,12 +35,10 @@ pub fn run(path: Option<PathBuf>, prefetch: Option<usize>) -> Result<(), Box<dyn
 struct App {
     initial_path: Option<PathBuf>,
     depth: usize,
-    cache_limits: CacheLimits,
     proxy: EventLoopProxy<UserEvent>,
     viewer: Option<Viewer>,
     window: Option<Window>,
     scroll: f32,
-    last_frame: Vec<u32>,
     modifiers: ModifiersState,
     clicks: ClickTracker,
     config: Config,
@@ -101,12 +99,10 @@ impl App {
         Self {
             initial_path,
             depth,
-            cache_limits,
             proxy,
             viewer: None,
             window: None,
             scroll: 0.0,
-            last_frame: Vec::new(),
             modifiers: ModifiersState::empty(),
             clicks: ClickTracker::new(),
             config,
@@ -133,7 +129,7 @@ impl App {
             } else {
                 format!("{start}/{}", viewer.pages.len())
             };
-            let mut title = format!("MangaNia - {} - {pages}", viewer.file_name);
+            let mut title = format!("MangaNia - {} - {pages}", viewer.name());
             if let Some(message) = viewer.errors.get(&viewer.current) {
                 title.push_str(" - error: ");
                 title.extend(message.chars().take(120));

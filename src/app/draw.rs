@@ -1,9 +1,4 @@
-use std::num::NonZeroU32;
-
-use image::RgbaImage;
-
 use crate::debug_log;
-use crate::render::image::{blank, render_pages};
 use crate::render::viewer::{Frame, Viewport};
 
 use super::App;
@@ -43,19 +38,6 @@ impl App {
     }
 
     pub(super) fn draw(&mut self) {
-        let Some(window) = self.window.as_mut() else {
-            return;
-        };
-        let size = window.size();
-        let (Some(width), Some(height)) =
-            (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-        else {
-            return;
-        };
-        let Some(mut buffer) = window.buffer_mut(width, height) else {
-            return;
-        };
-
         let frame = self
             .viewer
             .as_ref()
@@ -71,60 +53,14 @@ impl App {
             .as_ref()
             .is_some_and(|viewer| viewer.has_page(viewer.current));
         debug_log::log(format_args!(
-            "draw: {}x{} page={} display={} cached={}",
-            width,
-            height,
+            "draw: page={} display={} cached={}",
             page,
             frame.kind().as_str(),
             cached
         ));
 
-        match frame {
-            Frame::Failed => {
-                blank(&mut buffer);
-                self.last_frame.clear();
-            }
-            Frame::Loading => {
-                debug_log::log(format_args!(
-                    "draw: hold last frame ({} bytes)",
-                    self.last_frame.len()
-                ));
-                if self.last_frame.len() == buffer.len() {
-                    buffer.copy_from_slice(&self.last_frame);
-                } else {
-                    blank(&mut buffer);
-                }
-            }
-            Frame::Single(image) => {
-                draw_cells(
-                    &mut buffer,
-                    &mut self.last_frame,
-                    size.width,
-                    size.height,
-                    &[Some(image.as_ref())],
-                );
-            }
-            Frame::Spread { left, right } => {
-                draw_cells(
-                    &mut buffer,
-                    &mut self.last_frame,
-                    size.width,
-                    size.height,
-                    &[Some(left.as_ref()), Some(right.as_ref())],
-                );
-            }
-            Frame::RightOnly(right) => {
-                draw_cells(
-                    &mut buffer,
-                    &mut self.last_frame,
-                    size.width,
-                    size.height,
-                    &[None, Some(right.as_ref())],
-                );
-            }
-        }
-        if let Err(error) = buffer.present() {
-            debug_log::log(format_args!("surface present failed: {error}"));
+        if let Some(window) = self.window.as_mut() {
+            window.draw(frame);
         }
     }
 
@@ -168,23 +104,4 @@ impl App {
             self.refresh();
         }
     }
-}
-
-/// Draws the page cells and keeps the result to hold while loading.
-fn draw_cells(
-    buffer: &mut [u32],
-    last_frame: &mut Vec<u32>,
-    width: u32,
-    height: u32,
-    cells: &[Option<&RgbaImage>],
-) {
-    let start = std::time::Instant::now();
-    render_pages(buffer, width as usize, height as usize, cells);
-
-    last_frame.resize(buffer.len(), 0);
-    last_frame.copy_from_slice(buffer);
-    debug_log::log(format_args!(
-        "draw: rendered in {:.1}ms",
-        start.elapsed().as_secs_f64() * 1000.0
-    ));
 }
