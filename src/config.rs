@@ -95,7 +95,7 @@ pub struct Config {
     pub prefetch: usize,
     pub cache_pages: usize,
     pub cache_mb: usize,
-    /// Number of pages decoded in parallel. `0` uses the default.
+    /// Number of pages decoded in parallel. `0` decodes one page at a time.
     pub decode_batch_size: usize,
     pub scale_filter: ScaleFilter,
     pub debug: bool,
