@@ -30,14 +30,12 @@ pub fn decode_page(cache: &DiskCache, file: &PageFile) -> Result<RgbaImage, Stri
     match decode_file(&file.path) {
         Ok(image) => Ok(image),
         Err(error) => {
+            // `decode_file` already includes the path in its message.
             let message = if file.cached {
                 cache.discard(&file.path);
-                format!(
-                    "cached image is unreadable ({}): {error}",
-                    file.path.display()
-                )
+                format!("cached image is unreadable: {error}")
             } else {
-                format!("decode {}: {error}", file.path.display())
+                error
             };
             debug_log::log(format_args!("decode: {message}"));
             Err(message)
