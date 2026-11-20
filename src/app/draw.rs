@@ -90,7 +90,7 @@ impl App {
                 Err(message) => {
                     eprintln!("mangania: page {}: {message}", page + 1);
                     debug_log::log(format_args!("page {} failed: {message}", page + 1));
-                    viewer.errors.insert(page, message);
+                    viewer.fail_page(page, message);
                 }
             }
         }
