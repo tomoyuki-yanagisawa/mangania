@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::archive::{Archive, Page};
 use crate::debug_log;
 use crate::platform::resolve_shortcut;
+use crate::storage::disk_cache::{DiskCache, PageFile};
 
 /// Enough bytes to recognize every supported container signature.
 const PROBE_BYTES: usize = 1024;
@@ -100,6 +101,23 @@ impl Entry {
 
     pub fn page(&self, page: usize) -> Option<&Page> {
         self.archive.pages.get(page)
+    }
+
+    /// Returns the page at `index` and the local file to decode it from.
+    ///
+    /// ZIP entries are extracted to the disk cache first; directory pages are
+    /// used in place.
+    pub fn page_file(
+        &mut self,
+        cache: &DiskCache,
+        index: usize,
+    ) -> Result<(Page, PageFile), String> {
+        let page = self
+            .page(index)
+            .cloned()
+            .ok_or_else(|| format!("page {} is out of range", index + 1))?;
+        let file = cache.page_path(&mut self.archive, &page)?;
+        Ok((page, file))
     }
 }
 
