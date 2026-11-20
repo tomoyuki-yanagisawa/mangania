@@ -1,3 +1,4 @@
+pub(crate) mod console;
 pub(crate) mod icon;
 pub(crate) mod menu_bar;
 pub(crate) mod shortcut;
