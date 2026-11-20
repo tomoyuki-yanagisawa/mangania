@@ -62,8 +62,7 @@ impl Entry {
         let mut path = path.to_path_buf();
         for _ in 0..MAX_SHORTCUT_DEPTH {
             if path.is_dir() {
-                let archive = Archive::open_directory(&path)
-                    .map_err(|error| format!("{}: {error}", path.display()))?;
+                let archive = Archive::open_directory(&path)?;
                 return Ok(Self { path, archive });
             }
             let probe = probe(&path)?;

@@ -6,10 +6,6 @@ use mangania::archive::Archive;
 use mangania::render::decode::decode_page;
 use mangania::storage::disk_cache::{DiskCache, PageFile};
 
-fn cache_for(archive_path: &Path) -> DiskCache {
-    DiskCache::new(archive_path.parent().unwrap().join("cache"))
-}
-
 fn page_file(cache: &DiskCache, archive: &mut Archive, page: usize) -> PageFile {
     let page = archive.pages[page].clone();
     cache.page_path(archive, &page).unwrap()
@@ -44,7 +40,7 @@ fn cache_files(directory: &Path) -> Vec<PathBuf> {
 fn extracts_on_miss_and_reuses_on_hit() {
     let image = common::png();
     let path = common::temp_zip(&[("1.png", image.as_slice())]);
-    let cache = cache_for(&path);
+    let cache = common::cache_for(&path);
     let mut archive = Archive::open(&path).unwrap();
 
     let first = page_file(&cache, &mut archive, 0);
@@ -69,7 +65,7 @@ fn extracts_on_miss_and_reuses_on_hit() {
 #[test]
 fn archive_change_selects_a_different_cache_file() {
     let path = common::temp_zip(&[("1.png", common::png().as_slice())]);
-    let cache = cache_for(&path);
+    let cache = common::cache_for(&path);
     let mut archive = Archive::open(&path).unwrap();
     let first = source(&cache, &mut archive, 0).unwrap();
     drop(archive);
@@ -90,7 +86,7 @@ fn archive_change_selects_a_different_cache_file() {
 fn clear_removes_all_cached_files() {
     let image = common::png();
     let path = common::temp_zip(&[("1.png", image.as_slice())]);
-    let cache = cache_for(&path);
+    let cache = common::cache_for(&path);
     let mut archive = Archive::open(&path).unwrap();
 
     let cached = source(&cache, &mut archive, 0).unwrap();
@@ -122,7 +118,7 @@ fn cache_directory_failure_is_an_error() {
 fn corrupt_cached_file_is_removed_and_rebuilt_on_next_read() {
     let image = common::png();
     let path = common::temp_zip(&[("1.png", image.as_slice())]);
-    let cache = cache_for(&path);
+    let cache = common::cache_for(&path);
     let mut archive = Archive::open(&path).unwrap();
 
     let cached = page_file(&cache, &mut archive, 0);
@@ -146,7 +142,7 @@ fn corrupt_cached_file_is_removed_and_rebuilt_on_next_read() {
 fn truncated_cached_file_is_replaced() {
     let image = common::png();
     let path = common::temp_zip(&[("1.png", image.as_slice())]);
-    let cache = cache_for(&path);
+    let cache = common::cache_for(&path);
     let mut archive = Archive::open(&path).unwrap();
 
     let cached = source(&cache, &mut archive, 0).unwrap();
@@ -162,7 +158,7 @@ fn truncated_cached_file_is_replaced() {
 #[test]
 fn undecodable_entry_reports_an_error() {
     let path = common::temp_zip(&[("1.png", b"not an image".as_slice())]);
-    let cache = cache_for(&path);
+    let cache = common::cache_for(&path);
     let mut archive = Archive::open(&path).unwrap();
 
     let error = decode(&cache, &mut archive, 0).unwrap_err();
