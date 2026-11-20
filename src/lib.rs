@@ -12,3 +12,6 @@ pub(crate) mod menu;
 pub(crate) mod platform;
 pub mod render;
 pub mod storage;
+
+#[cfg(windows)]
+pub use platform::windows::console::attach_parent_console;
