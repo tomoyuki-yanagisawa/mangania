@@ -128,11 +128,12 @@ impl Orientation {
 }
 
 /// Per-page state that survives display-cache clears.
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct PageState {
     orientation: Option<Orientation>,
     error: Option<String>,
-    /// The decoded page could not be kept in the display cache.
+    /// The decoded page was not kept in the display cache. Prefetching skips
+    /// it until it becomes visible; evicting a cached page does not set it.
     rejected: bool,
 }
 
@@ -167,7 +168,7 @@ impl Viewer {
         cache_limits: CacheLimits,
         viewport: Viewport,
     ) -> Self {
-        let states = (0..pages.len()).map(|_| PageState::default()).collect();
+        let states = vec![PageState::default(); pages.len()];
         Self {
             path,
             pages,
@@ -261,7 +262,7 @@ impl Viewer {
     }
 
     fn needs_request(&self, page: usize) -> bool {
-        page < self.pages.len() && !self.has_page(page) && self.states[page].error.is_none()
+        page < self.pages.len() && !self.has_page(page) && self.error(page).is_none()
     }
 
     fn push_job(
