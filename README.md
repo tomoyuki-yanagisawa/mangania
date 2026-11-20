@@ -112,6 +112,8 @@ Windows / macOS ではメニューの「表示」>「縮小フィルタ」から
 
 ZIP 内の画像エントリは、専用のディスクキャッシュへ展開してからデコードします。展開済みバイト列をメモリに保持せず、キャッシュファイルを直接 `image::ImageReader` で読みます。画像フォルダはキャッシュを使わず、元の画像ファイルを直接読みます。
 
+`warm_cache = true`（既定）では、ZIP を開いた直後に全ページをバックグラウンドでディスクキャッシュへ展開します。表示用のデコードとは別スレッドで動くため、ページ送りは展開完了を待ちません。ディスク容量は書庫の展開後サイズ程度増えます。不要なら `warm_cache = false` にしてください。
+
 - キャッシュ先:
   - Windows: `%LOCALAPPDATA%\mangania\cache`（未設定時は `%USERPROFILE%\AppData\Local\mangania\cache`、それも使えなければ OS の一時ディレクトリ）
   - macOS: `~/Library/Caches/mangania`
@@ -154,6 +156,7 @@ cache_mb = 256
 decode_batch_size = 2
 scale_filter = "triangle"
 debug = false
+warm_cache = true
 allow_upscale = true
 ```
 
@@ -166,6 +169,7 @@ allow_upscale = true
 - `decode_batch_size` は並列デコードするページ数です。省略時は 2、`0` も 2 として扱います。利用可能なコア数と上限8でクランプされます。増やすとフル解像度画像を同時に保持するため、メモリ使用量が増えます。
 - `scale_filter` は縮小アルゴリズムです。`nearest` / `triangle` / `hamming` / `catmull_rom` / `mitchell` / `gaussian` / `lanczos3` のいずれかで、省略時は `triangle` です。不正な値は既定値に戻ります。
 - `debug = true` にすると、`config.toml` と同じディレクトリの `debug.log` に読み込み・デコード・描画のログを出力します。通常は `false` のままにしてください。
+- `warm_cache` が `true` のとき、ZIP を開いた後に全ページをバックグラウンドでディスクキャッシュへ展開します。ページ送りは展開済みファイルを読むため、書庫の読み直しを待ちにくくなります。ディスク容量は書庫の展開後サイズ程度増えます。既定は `true` です。
 - `allow_upscale` は画面より小さい画像を拡大するかどうかです。省略時は `true`（拡大する）です。`false` にすると縮小だけを行い、小さい画像は原寸で表示します。
 - メモリキャッシュは表示サイズの画像のみを保持します。現在ページと見開き・混合表示の相手を優先し、`cache_pages` か `cache_mb` に達したら現在ページから遠いページの画像から破棄します。
 - 拡張子はテンプレートに含めず、元画像から自動で付きます。
@@ -281,6 +285,7 @@ JPEG 2000 は対象外です。
 - 表示サイズの画像を `cache_pages`（既定8ページ）と `cache_mb`（既定256MiB）の小さい方まで保持。1ページ1枚。現在ページと見開き・混合表示の相手を守り、現在ページから遠いものから破棄（同じ距離なら未来のページを優先）
 - ZIP エントリは専用ディレクトリのディスクキャッシュへ展開し、そのファイルから直接デコード。展開済みバイト列はメモリに保持しない。画像フォルダは元ファイルを直接デコードする。最大 `decode_batch_size` ページをバッチにして並列デコードする
 - ディスクキャッシュは自動削除せず、メニューの「キャッシュを削除」で手動削除。壊れた ZIP のキャッシュファイルは削除し、次回読み込み時に ZIP から再展開
+- `warm_cache = true` のとき、ZIP 全体を表示用とは別スレッドでバックグラウンド展開し、ページ送りで書庫の読み直しを待ちにくくする
 - ページ移動ではキャッシュを維持し、ウィンドウサイズ・縮小フィルタ・表示モードの変更時は再デコード
 - 縮小は `fast_image_resize` の SIMD 実装を使い、描画は行単位コピーで転送する
 - 縮小フィルタ（nearest / triangle / hamming / catmull_rom / mitchell / gaussian / lanczos3）を設定・メニューから選択
@@ -349,7 +354,8 @@ src/
 │   └── navigation.rs # ページ移動の純粋関数
 ├── storage/
 │   ├── mod.rs
-│   └── disk_cache.rs # ZIP の展開済みページのディスクキャッシュ（手動削除）
+│   ├── disk_cache.rs # ZIP の展開済みページのディスクキャッシュ（手動削除）
+│   └── warm_cache.rs # ZIP 全体のバックグラウンド展開
 ├── platform/
 │   ├── windows/
 │   │   ├── icon.rs     # タイトルバー / タスクバーのアイコン（build.rs 生成）

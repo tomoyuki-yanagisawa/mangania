@@ -21,6 +21,7 @@ use crate::input::click::ClickTracker;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::platform::MenuBar;
 use crate::render::viewer::{CacheLimits, Viewer};
+use crate::storage::warm_cache::CacheWarmer;
 
 use self::window::Window;
 
@@ -47,6 +48,7 @@ struct App {
     status: Option<String>,
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     menu: Option<MenuBar>,
+    warmer: Option<CacheWarmer>,
     error: Option<String>,
     open_generation: u64,
     viewer_generation: u64,
@@ -70,7 +72,7 @@ impl App {
             }
         }
         debug_log::log(format_args!(
-            "config: mode={} prefetch={} cache_pages={} cache_mb={} decode_batch_size={} scale_filter={} allow_upscale={} debug={}",
+            "config: mode={} prefetch={} cache_pages={} cache_mb={} decode_batch_size={} scale_filter={} allow_upscale={} warm_cache={} debug={}",
             config.mode.as_str(),
             config.prefetch,
             config.cache_pages,
@@ -78,6 +80,7 @@ impl App {
             config.decode_batch_size,
             config.scale_filter.as_str(),
             config.allow_upscale,
+            config.warm_cache,
             config.debug
         ));
         let depth = prefetch.unwrap_or(config.prefetch);
@@ -111,6 +114,7 @@ impl App {
             status: None,
             #[cfg(any(target_os = "windows", target_os = "macos"))]
             menu: None,
+            warmer: None,
             error: None,
             open_generation: 0,
             viewer_generation: 0,

@@ -22,7 +22,7 @@ fn parses_all_config_fields() {
     assert_eq!(Config::parse("").mode, DisplayMode::Single);
 
     let config = Config::parse(
-        "mode = \"mixed\"\nexport_dir = \"/tmp/mangania-out\"\nexport_name = \"{book}_{page:03}\"\nprefetch = 4\ncache_pages = 6\ncache_mb = 64\ndecode_batch_size = 3\nscale_filter = \"lanczos3\"\ndebug = true\n",
+        "mode = \"mixed\"\nexport_dir = \"/tmp/mangania-out\"\nexport_name = \"{book}_{page:03}\"\nprefetch = 4\ncache_pages = 6\ncache_mb = 64\ndecode_batch_size = 3\nscale_filter = \"lanczos3\"\ndebug = true\nwarm_cache = false\n",
     );
     assert_eq!(config.mode, DisplayMode::Mixed);
     assert_eq!(config.export_dir, Some(PathBuf::from("/tmp/mangania-out")));
@@ -33,6 +33,7 @@ fn parses_all_config_fields() {
     assert_eq!(config.decode_batch_size, 3);
     assert_eq!(config.scale_filter, ScaleFilter::Lanczos3);
     assert!(config.debug);
+    assert!(!config.warm_cache);
     assert_eq!(config.cache_entries(), 6);
     assert_eq!(config.cache_bytes(), 64 * 1024 * 1024);
 }
@@ -49,11 +50,13 @@ fn uses_defaults_for_prefetch_and_cache() {
     assert_eq!(config.decode_batch_size, DEFAULT_DECODE_BATCH_SIZE);
     assert!(config.effective_decode_batch_size() >= 1);
     assert!(config.effective_decode_batch_size() <= DEFAULT_DECODE_BATCH_SIZE);
+    assert!(config.warm_cache);
     let empty = Config::parse("");
     assert_eq!(empty.prefetch, DEFAULT_PREFETCH);
     assert_eq!(empty.cache_pages, DEFAULT_CACHE_PAGES);
     assert_eq!(empty.cache_mb, DEFAULT_CACHE_MB);
     assert_eq!(empty.decode_batch_size, DEFAULT_DECODE_BATCH_SIZE);
+    assert!(empty.warm_cache);
 
     let no_cache = Config::parse("cache_pages = 0\ncache_mb = 0\n");
     assert_eq!(no_cache.cache_entries(), DEFAULT_CACHE_PAGES);
@@ -132,6 +135,7 @@ fn writes_default_config_on_first_load() {
     assert!(text.contains("cache_mb = 256"));
     assert!(text.contains("decode_batch_size = 2"));
     assert!(text.contains("# decode_batch_size"));
+    assert!(text.contains("warm_cache = true"));
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -166,6 +170,7 @@ fn round_trips_config_file() {
         decode_batch_size: 4,
         scale_filter: ScaleFilter::Gaussian,
         debug: true,
+        warm_cache: false,
         allow_upscale: false,
     };
 
