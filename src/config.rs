@@ -178,9 +178,9 @@ impl Config {
             "# export_dir: 省略時は OS のピクチャフォルダ/MangaNia\n",
             "# export_name: {book}, {page}, {page:03}, {name} が使えます\n",
             "# prefetch: 先読みする段数（単ページ表示はページ数、見開き・混合表示は2ページ単位）\n",
-            "# cache_pages: メモリに保持するページ数。0 は既定値\n",
-            "# cache_mb: メモリキャッシュ上限（MiB）。0 は既定値\n",
-            "# decode_batch_size: 並列デコードするページ数。0 は既定値\n",
+            "# cache_pages: メモリに保持するページ数。0 は無制限\n",
+            "# cache_mb: メモリキャッシュ上限（MiB）。0 は無制限\n",
+            "# decode_batch_size: 並列デコードするページ数。0 は1ページずつ\n",
             "# scale_filter: nearest / triangle / hamming / catmull_rom / mitchell / gaussian / lanczos3\n",
             "# debug: true で debug.log にログを出力\n",
             "# allow_upscale: false にすると画面より小さい画像を拡大しない\n",
@@ -207,26 +207,30 @@ impl Config {
 
     /// Number of display images the cache can hold. Each page has one.
     pub fn cache_entries(&self) -> usize {
-        cache_value(self.cache_pages, DEFAULT_CACHE_PAGES)
+        if self.cache_pages == 0 {
+            usize::MAX
+        } else {
+            self.cache_pages
+        }
     }
 
     pub fn cache_bytes(&self) -> usize {
-        cache_value(self.cache_mb, DEFAULT_CACHE_MB).saturating_mul(1024 * 1024)
+        if self.cache_mb == 0 {
+            usize::MAX
+        } else {
+            self.cache_mb.saturating_mul(1024 * 1024)
+        }
     }
 
     /// Effective decode batch size, bounded by the available cores and the
     /// memory-safety cap.
     pub fn effective_decode_batch_size(&self) -> usize {
-        let requested = cache_value(self.decode_batch_size, DEFAULT_DECODE_BATCH_SIZE);
+        let requested = self.decode_batch_size.max(1);
         let available = std::thread::available_parallelism()
             .map(|count| count.get())
             .unwrap_or(1);
         requested.min(available).clamp(1, MAX_DECODE_BATCH_SIZE)
     }
-}
-
-fn cache_value(value: usize, default: usize) -> usize {
-    if value == 0 { default } else { value }
 }
 
 fn write_default_config(path: &Path) -> io::Result<()> {

@@ -50,9 +50,9 @@ allow_upscale = true
 - `export_dir` の省略時は `~/Pictures/MangaNia`。
 - `export_name` の省略時は `{book}_{page:03}`。
 - `prefetch` の省略時は 2。単ページ表示ではページ数、見開き・混合表示では2ページ単位の段数。`--prefetch` が指定された場合は CLI を優先する。
-- `cache_pages` の省略時は 8。`0` も 8 として扱う。各ページは表示サイズの画像を1枚だけ持つ。
-- `cache_mb` の省略時は 256。`0` も 256 として扱う。`cache_pages` とどちらかに達した時点で破棄する。
-- `decode_batch_size` の省略時は 2。`0` も 2 として扱う。利用可能なコア数と上限8でクランプする。増やすとフル解像度画像を同時に保持するため、メモリ使用量が増える。
+- `cache_pages` の省略時は 8。`0` は無制限。各ページは表示サイズの画像を1枚だけ持つ。
+- `cache_mb` の省略時は 256。`0` は無制限。`cache_pages` とどちらかに達した時点で破棄する。
+- `decode_batch_size` の省略時は 2。`0` は1ページずつ（直列）。利用可能なコア数と上限8でクランプする。増やすとフル解像度画像を同時に保持するため、メモリ使用量が増える。
 - ディスクキャッシュは自動削除しない。メニューの「ファイル」>「キャッシュを削除」で手動削除する。
 - `scale_filter` の省略時は `triangle`。`nearest` / `triangle` / `hamming` / `catmull_rom` / `mitchell` / `gaussian` / `lanczos3` を指定できる。不正な値は `triangle` に戻る。
 - `debug` の省略時は `false`。`true` にすると `config.toml` と同じディレクトリの `debug.log` にログを出力する。

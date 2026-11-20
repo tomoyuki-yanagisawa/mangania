@@ -56,8 +56,11 @@ fn uses_defaults_for_prefetch_and_cache() {
     assert_eq!(empty.decode_batch_size, DEFAULT_DECODE_BATCH_SIZE);
 
     let no_cache = Config::parse("cache_pages = 0\ncache_mb = 0\n");
-    assert_eq!(no_cache.cache_entries(), DEFAULT_CACHE_PAGES);
-    assert_eq!(no_cache.cache_bytes(), DEFAULT_CACHE_MB * 1024 * 1024);
+    assert_eq!(no_cache.cache_entries(), usize::MAX);
+    assert_eq!(no_cache.cache_bytes(), usize::MAX);
+
+    let serial = Config::parse("decode_batch_size = 0\n");
+    assert_eq!(serial.effective_decode_batch_size(), 1);
 }
 
 #[test]
