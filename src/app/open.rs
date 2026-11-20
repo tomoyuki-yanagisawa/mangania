@@ -5,7 +5,7 @@ use crate::debug_log;
 use crate::event::UserEvent;
 use crate::export;
 use crate::render::prefetch::Prefetch;
-use crate::render::viewer::Viewer;
+use crate::render::viewer::{CacheLimits, Viewer};
 use crate::storage::disk_cache::DiskCache;
 
 use super::App;
@@ -48,30 +48,31 @@ impl App {
                 }
 
                 let pages = std::mem::take(&mut archive.pages);
-                let name = resolved_path
-                    .file_name()
-                    .map(|name| name.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| resolved_path.display().to_string());
                 let proxy = self.proxy.clone();
                 let cache = DiskCache::default();
+                let cache_limits = CacheLimits {
+                    entries: self.config.cache_entries(),
+                    bytes: self.config.cache_bytes(),
+                };
                 let decode_batch_size = self.config.effective_decode_batch_size();
                 let prefetch = Prefetch::start(archive, cache, decode_batch_size, move || {
                     proxy.send_event(UserEvent::ImageReady).is_ok()
                 });
                 self.viewer = Some(Viewer::new(
-                    name,
                     resolved_path,
                     pages,
                     prefetch,
                     self.depth,
-                    self.cache_limits,
+                    cache_limits,
                     self.viewport(),
                 ));
                 self.viewer_generation = self.viewer_generation.wrapping_add(1);
                 self.error = None;
                 self.status = None;
                 self.scroll = 0.0;
-                self.last_frame.clear();
+                if let Some(window) = &mut self.window {
+                    window.clear_frame();
+                }
                 self.refresh();
             }
             Err(error) => {
