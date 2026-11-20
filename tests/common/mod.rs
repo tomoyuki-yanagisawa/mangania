@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
+use mangania::storage::disk_cache::DiskCache;
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -20,6 +21,11 @@ pub fn temp_zip(entries: &[(&str, &[u8])]) -> PathBuf {
     }
     writer.finish().unwrap();
     path
+}
+
+/// A disk cache next to the temp archive, so parallel test binaries stay isolated.
+pub fn cache_for(archive_path: &Path) -> DiskCache {
+    DiskCache::new(archive_path.parent().unwrap().join("cache"))
 }
 
 pub fn temp_file(name: &str, bytes: &[u8]) -> PathBuf {
