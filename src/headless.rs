@@ -21,15 +21,17 @@ pub fn check(path: &Path, cache: &DiskCache) -> Result<(), Box<dyn Error>> {
     let mut failed = 0;
 
     for page in 0..total {
-        let Some(page_info) = entry.page(page).cloned() else {
-            continue;
-        };
-        let result = cache
-            .page_path(&mut entry.archive, &page_info)
-            .and_then(|file| decode_page(cache, &file));
-        if let Err(error) = result {
-            failed += 1;
-            eprintln!("page {} ({}): {error}", page + 1, page_info.name);
+        match entry.page_file(cache, page) {
+            Ok((page_info, file)) => {
+                if let Err(error) = decode_page(cache, &file) {
+                    failed += 1;
+                    eprintln!("page {} ({}): {error}", page + 1, page_info.name);
+                }
+            }
+            Err(error) => {
+                failed += 1;
+                eprintln!("page {}: {error}", page + 1);
+            }
         }
     }
 
@@ -50,13 +52,7 @@ pub fn render_page(
     let index = page
         .checked_sub(1)
         .ok_or_else(|| io::Error::other("page must be >= 1"))?;
-    let page_info = entry
-        .page(index)
-        .cloned()
-        .ok_or_else(|| io::Error::other("page out of range"))?;
-    let file = cache
-        .page_path(&mut entry.archive, &page_info)
-        .map_err(io::Error::other)?;
+    let (_, file) = entry.page_file(cache, index).map_err(io::Error::other)?;
     let image = decode_page(cache, &file).map_err(io::Error::other)?;
     image::DynamicImage::ImageRgba8(image).save(output)?;
     println!("wrote {}", output.display());
