@@ -1,16 +1,18 @@
 use winit::event_loop::{EventLoop, EventLoopBuilder};
 
-use crate::event::UserEvent;
+use crate::app::event::UserEvent;
 
 #[cfg(target_os = "macos")]
 pub(crate) mod macos;
+#[cfg(any(windows, target_os = "macos", test))]
+mod menu;
 #[cfg(windows)]
 pub(crate) mod windows;
 
-#[cfg(any(target_os = "windows", target_os = "macos"))]
-pub(crate) use crate::menu::{MenuCommand, MenuState, action_for_mode};
 #[cfg(target_os = "macos")]
 pub(crate) use macos::menu_bar::MenuBar;
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+pub(crate) use menu::{MenuCommand, MenuState, action_for_mode};
 #[cfg(windows)]
 pub(crate) use windows::icon::apply as apply_window_icon;
 #[cfg(windows)]

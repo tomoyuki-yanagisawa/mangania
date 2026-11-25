@@ -11,10 +11,10 @@ use objc2_foundation::{MainThreadMarker, NSObject, NSString, ns_string};
 use winit::event_loop::{EventLoopBuilder, EventLoopProxy};
 use winit::platform::macos::EventLoopBuilderExtMacOS;
 
+use crate::app::event::UserEvent;
 use crate::config::{DisplayMode, ScaleFilter};
-use crate::event::UserEvent;
 use crate::input::bindings::Action;
-use crate::menu::{NAVIGATION_ITEMS, labels};
+use crate::platform::menu::{NAVIGATION_ITEMS, labels};
 use crate::platform::{MenuCommand, MenuState, action_for_mode};
 
 /// Lets the app install its own system menu instead of winit's default menu.

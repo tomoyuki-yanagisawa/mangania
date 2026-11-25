@@ -1,4 +1,6 @@
+mod commands;
 mod draw;
+pub(crate) mod event;
 mod input;
 mod open;
 mod window;
@@ -15,14 +17,13 @@ use winit::window::WindowId;
 
 use crate::config::Config;
 use crate::debug_log;
-use crate::event::UserEvent;
 use crate::input::bindings::{KeyBindings, MouseBindings};
 use crate::input::click::ClickTracker;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use crate::platform::MenuBar;
 use crate::render::viewer::{CacheLimits, Viewer};
 
-use self::window::Window;
+use self::{event::UserEvent, window::Window};
 
 pub fn run(path: Option<PathBuf>, prefetch: Option<usize>) -> Result<(), Box<dyn Error>> {
     let event_loop = crate::platform::event_loop_builder().build()?;
