@@ -36,13 +36,5 @@ pub fn step(current: usize, len: usize, spread: bool, delta: isize) -> Option<us
 }
 
 pub fn step_single(current: usize, len: usize, delta: isize) -> Option<usize> {
-    if len == 0 {
-        return None;
-    }
-    let target = if delta > 0 {
-        current.saturating_add(1)
-    } else {
-        current.saturating_sub(1)
-    };
-    clamp_page(target, len)
+    step(current, len, false, delta)
 }
