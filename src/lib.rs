@@ -3,12 +3,9 @@ pub mod archive;
 pub mod cli;
 pub mod config;
 pub(crate) mod debug_log;
-pub(crate) mod event;
 pub mod export;
 pub mod headless;
 pub mod input;
-#[cfg(any(windows, target_os = "macos", test))]
-pub(crate) mod menu;
 pub(crate) mod platform;
 pub mod render;
 pub mod storage;

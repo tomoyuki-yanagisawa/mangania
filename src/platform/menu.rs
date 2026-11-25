@@ -1,4 +1,4 @@
-//! Platform-independent menu commands, labels, and check states.
+//! Menu commands, labels, and check states shared by the native menus.
 
 use crate::config::{DisplayMode, ScaleFilter};
 use crate::input::bindings::Action;

@@ -1,4 +1,4 @@
-pub enum UserEvent {
+pub(crate) enum UserEvent {
     ImageReady,
     Opened {
         generation: u64,

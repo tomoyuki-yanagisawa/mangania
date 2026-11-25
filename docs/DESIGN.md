@@ -33,8 +33,12 @@ ZIP 内の漫画画像を高速に読むための、小さなネイティブビ�
 | `main.rs` | CLI の入口 |
 | `cli.rs` | 引数解析 |
 | `app/` | winit イベントループ、App 状態、描画、入力、ファイル操作、ウィンドウ操作 |
+| `app/commands.rs` | 表示設定、全画面切替、メニュー操作 |
+| `app/event.rs` | ワーカー / メニューから UI へのイベント |
+| `app/window.rs` | ウィンドウと描画面の所有、直前のフレームの保持 |
 | `archive/mod.rs` | ZIP / ディレクトリの索引、自然順、安全なページ読み出し |
 | `archive/open.rs` | 形式判定、アプリ共通のエントリ API |
+| `archive/adjacent.rs` | 同じ種類の前後のアーカイブ / 画像フォルダを探索 |
 | `render/decode.rs` | JPEG / PNG / WebP / BMP のデコード（メモリ・ファイル・ページ） |
 | `render/viewer.rs` | 現在ページ、ページ一覧、表示サイズキャッシュ、先読み要求 |
 | `render/cache.rs` | 表示サイズ画像の上限付きキャッシュ（前後1表示を保護して破棄） |
@@ -44,13 +48,12 @@ ZIP 内の漫画画像を高速に読むための、小さなネイティブビ�
 | `input/navigation.rs` | ページ移動の純粋関数 |
 | `input/bindings/` | アクション定義、キー・マウス割り当ての TOML 読み書き |
 | `storage/disk_cache.rs` | ZIP エントリのディスクキャッシュ（キー、原子書き込み、手動削除） |
-| `menu.rs` | OS 非依存のメニューコマンド、ラベル、ナビゲーション項目、チェック状態 |
+| `platform/menu.rs` | ネイティブメニュー共通のコマンド、ラベル、ナビゲーション項目、チェック状態 |
 | `platform/windows/` | Windows 固有の Win32 / COM 処理（メニューバー、アイコン、アクティブ化クリックの破棄、ショートカット） |
 | `platform/macos/` | macOS 固有の AppKit 処理（システムメニューバー） |
 | `config.rs` | 一般設定の TOML 読み書き |
 | `export.rs` | 表示中ページの保存、ファイル名テンプレート |
 | `headless.rs` | GUI なしの `--list` / `--check` / `--render-page` |
-| `event.rs` | ワーカー / メニューから UI へのイベント |
 
 ### データフロー
 

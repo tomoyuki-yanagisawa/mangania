@@ -2,13 +2,12 @@ use std::path::{Path, PathBuf};
 
 use crate::archive::open::Entry;
 use crate::debug_log;
-use crate::event::UserEvent;
 use crate::export;
 use crate::render::prefetch::Prefetch;
 use crate::render::viewer::{CacheLimits, Viewer};
 use crate::storage::disk_cache::DiskCache;
 
-use super::App;
+use super::{App, event::UserEvent};
 
 impl App {
     pub(super) fn open(&mut self, path: &Path) {

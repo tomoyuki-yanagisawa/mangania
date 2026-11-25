@@ -329,15 +329,17 @@ cargo +nightly build -Z build-std --target x86_64-win7-windows-msvc --release
 src/
 ├── lib.rs       # ライブラリ入口（コアAPI）
 ├── main.rs      # CLI
-├── menu.rs      # メニューコマンド、ラベル、ナビゲーション、チェック状態（OS非依存）
 ├── app/
 │   ├── mod.rs   # run、App、イベントループ
+│   ├── commands.rs # 表示設定、全画面、メニュー操作
 │   ├── draw.rs  # 描画、ビューポート、画像受信
+│   ├── event.rs # ワーカー・メニューから届くイベント
 │   ├── input.rs # ナビゲーション、クリック、キー
 │   ├── open.rs  # アーカイブを開く、ページ保存
-│   └── window.rs # 全画面、メニュー、表示設定の操作
+│   └── window.rs # ウィンドウ、描画面、直前のフレーム
 ├── archive/
 │   ├── mod.rs   # ZIP / ディレクトリの索引・自然順・読み出し、ZIP エントリのストリーム展開
+│   ├── adjacent.rs # 次・前のアーカイブや画像フォルダの探索
 │   └── open.rs  # 形式判定・エントリ
 ├── render/
 │   ├── mod.rs
@@ -345,7 +347,8 @@ src/
 │   ├── decode.rs # JPEG / PNG / WebP / BMP のデコード（メモリ・ファイル・ページ）
 │   ├── prefetch.rs # デコードスレッドと現在位置順のジョブ（winit非依存）
 │   ├── image.rs # フィット・ページ配置・縮小・0RGB 描画
-│   └── viewer.rs # Viewer: ページ、現在位置、表示サイズキャッシュ、Prefetch要求
+│   ├── viewer.rs # Viewer: ページ、現在位置、表示サイズキャッシュ、Prefetch要求
+│   └── viewer/tests.rs # Viewer の単体テスト
 ├── input/
 │   ├── mod.rs
 │   ├── bindings/
@@ -358,14 +361,15 @@ src/
 │   ├── mod.rs
 │   └── disk_cache.rs # ZIP の展開済みページのディスクキャッシュ（手動削除）
 ├── platform/
+│   ├── menu.rs # ネイティブメニュー共通のコマンド、ラベル、チェック状態
 │   ├── windows/
+│   │   ├── console.rs  # 親コンソールへの接続
 │   │   ├── icon.rs     # タイトルバー / タスクバーのアイコン（build.rs 生成）
 │   │   ├── menu_bar.rs # Win32 メニューバー、WM_COMMAND / アクティブ化クリック
 │   │   └── shortcut.rs # .lnk の COM 解決
 │   └── macos/
 │       └── menu_bar.rs # AppKit のシステムメニューバー
 ├── config.rs    # TOML設定（表示・保存・縮小フィルタ・拡大可否の永続化）
-├── event.rs     # winit/menu のユーザーイベント
 ├── debug_log.rs # デバッグログ出力
 ├── cli.rs       # 引数解析
 ├── export.rs    # 表示中ページの保存、ファイル名テンプレート
