@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -249,14 +248,14 @@ impl Viewer {
     /// pages are not retried until they become visible.
     pub(crate) fn request_display(&mut self) {
         let mut jobs = Vec::new();
-        let mut seen = HashSet::new();
         let current = self.current;
-        self.push_job(&mut jobs, &mut seen, current, true);
-        if self.viewport.mode != DisplayMode::Single && current + 1 < self.pages.len() {
-            self.push_job(&mut jobs, &mut seen, current + 1, true);
+        self.push_job(&mut jobs, current, true);
+        if self.viewport.mode != DisplayMode::Single {
+            self.push_job(&mut jobs, current + 1, true);
         }
+        // The prefetch range starts after the visible page or pair.
         for page in prefetch_targets(current, self.pages.len(), self.depth, self.viewport.mode) {
-            self.push_job(&mut jobs, &mut seen, page, false);
+            self.push_job(&mut jobs, page, false);
         }
         self.prefetch.set_jobs(jobs);
     }
@@ -265,18 +264,8 @@ impl Viewer {
         page < self.pages.len() && !self.has_page(page) && self.error(page).is_none()
     }
 
-    fn push_job(
-        &self,
-        jobs: &mut Vec<(usize, usize, String)>,
-        seen: &mut HashSet<usize>,
-        page: usize,
-        visible: bool,
-    ) {
-        if page >= self.pages.len()
-            || !seen.insert(page)
-            || !self.needs_request(page)
-            || (!visible && self.states[page].rejected)
-        {
+    fn push_job(&self, jobs: &mut Vec<(usize, usize, String)>, page: usize, visible: bool) {
+        if !self.needs_request(page) || (!visible && self.states[page].rejected) {
             return;
         }
         let page_info = &self.pages[page];
