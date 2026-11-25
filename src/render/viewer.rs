@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -519,21 +520,11 @@ fn display_size(viewport: Viewport, orientation: Orientation) -> (u32, u32) {
 
 /// Pages to prefetch ahead. Single-page mode counts pages; the other modes
 /// request two pages per step so a spread or a mixed pair stays ahead.
-fn prefetch_targets(current: usize, len: usize, depth: usize, mode: DisplayMode) -> Vec<usize> {
+fn prefetch_targets(current: usize, len: usize, depth: usize, mode: DisplayMode) -> Range<usize> {
     let step = if mode == DisplayMode::Single { 1 } else { 2 };
-    let mut targets = Vec::new();
-    for offset in 1..=depth {
-        let Some(start) = current.checked_add(offset.saturating_mul(step)) else {
-            break;
-        };
-        for page in start..start.saturating_add(step) {
-            if page >= len {
-                return targets;
-            }
-            targets.push(page);
-        }
-    }
-    targets
+    let start = current.saturating_add(step).min(len);
+    let end = start.saturating_add(depth.saturating_mul(step)).min(len);
+    start..end
 }
 
 #[cfg(test)]

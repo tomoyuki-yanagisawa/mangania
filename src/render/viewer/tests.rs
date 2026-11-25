@@ -344,24 +344,20 @@ fn last_spread_page_uses_only_the_right_cell() {
 
 #[test]
 fn prefetch_follows_pages_or_pairs() {
-    assert_eq!(prefetch_targets(0, 10, 2, DisplayMode::Single), vec![1, 2]);
-    assert_eq!(
-        prefetch_targets(0, 10, 2, DisplayMode::Spread),
-        vec![2, 3, 4, 5]
-    );
-    assert_eq!(prefetch_targets(5, 10, 1, DisplayMode::Mixed), vec![7, 8]);
+    assert_eq!(prefetch_targets(0, 10, 2, DisplayMode::Single), 1..3);
+    assert_eq!(prefetch_targets(0, 10, 2, DisplayMode::Spread), 2..6);
+    assert_eq!(prefetch_targets(5, 10, 1, DisplayMode::Mixed), 7..9);
+    assert!(prefetch_targets(0, 10, 0, DisplayMode::Single).is_empty());
 }
 
 #[test]
 fn prefetch_stops_at_the_last_page() {
-    assert_eq!(prefetch_targets(0, 3, 2, DisplayMode::Spread), vec![2]);
+    assert_eq!(prefetch_targets(0, 3, 2, DisplayMode::Spread), 2..3);
+    assert!(prefetch_targets(8, 10, 2, DisplayMode::Spread).is_empty());
+    assert!(prefetch_targets(9, 10, 2, DisplayMode::Single).is_empty());
     assert_eq!(
-        prefetch_targets(8, 10, 2, DisplayMode::Spread),
-        Vec::<usize>::new()
-    );
-    assert_eq!(
-        prefetch_targets(9, 10, 2, DisplayMode::Single),
-        Vec::<usize>::new()
+        prefetch_targets(0, 3, usize::MAX, DisplayMode::Spread),
+        2..3
     );
 }
 
