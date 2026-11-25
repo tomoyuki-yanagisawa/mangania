@@ -29,10 +29,12 @@ pub enum Action {
     ToggleFullscreen,
     SavePage,
     Quit,
+    NextFile,
+    PrevFile,
 }
 
 impl Action {
-    pub(crate) const ALL: [Action; 13] = [
+    pub(crate) const ALL: [Action; 15] = [
         Action::Next,
         Action::Prev,
         Action::NextSingle,
@@ -46,6 +48,8 @@ impl Action {
         Action::ToggleFullscreen,
         Action::SavePage,
         Action::Quit,
+        Action::NextFile,
+        Action::PrevFile,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -63,6 +67,8 @@ impl Action {
             Action::ToggleFullscreen => "toggle_fullscreen",
             Action::SavePage => "save_page",
             Action::Quit => "quit",
+            Action::NextFile => "next_file",
+            Action::PrevFile => "prev_file",
         }
     }
 }
@@ -158,6 +164,8 @@ mod tests {
                 "toggle_fullscreen",
                 "save_page",
                 "quit",
+                "next_file",
+                "prev_file",
             ]
         );
     }

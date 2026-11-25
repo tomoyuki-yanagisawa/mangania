@@ -26,6 +26,8 @@ mixed_page = []
 toggle_fullscreen = ["F11", "Enter"]
 save_page = ["Ctrl+S", "Cmd+S"]
 quit = ["Escape"]
+next_file = ["6", "Down"]
+prev_file = ["4", "Up"]
 "#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

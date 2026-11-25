@@ -84,6 +84,20 @@ impl App {
         }
     }
 
+    /// Opens the next or previous ZIP/CBZ in the same directory.
+    pub(super) fn open_adjacent(&mut self, delta: isize) {
+        let Some(viewer) = &self.viewer else {
+            return;
+        };
+        let path = viewer.path.clone();
+        let Some(path) = crate::archive::adjacent::adjacent_archive(&path, delta) else {
+            debug_log::log(format_args!("adjacent file: none"));
+            return;
+        };
+        debug_log::log(format_args!("adjacent file: {}", path.display()));
+        self.open(&path);
+    }
+
     pub(super) fn save_current_page(&mut self) {
         if self.saving {
             return;

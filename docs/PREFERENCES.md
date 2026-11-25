@@ -75,12 +75,15 @@ mixed_page = []
 toggle_fullscreen = ["F11", "Enter"]
 save_page = ["Ctrl+S", "Cmd+S"]
 quit = ["Escape"]
+next_file = ["6", "Down"]
+prev_file = ["4", "Up"]
 ```
 
 - 修飾キーは `Ctrl` / `Shift` / `Alt` / `Super`（macOS の Cmd）。
 - 文字キーは大文字小文字を区別しない。
 - 修飾キーは完全一致で判定する。
 - 1アクションに複数キーを指定できる。`[]` で無効化できる。
+- ファイル移動は `next_file` / `prev_file` で、同じディレクトリの ZIP / CBZ を自然順に移動する。既定は 6 / 4 と Down / Up。
 
 ### mouse.toml
 

@@ -23,16 +23,20 @@ pub(crate) mod labels {
     pub(crate) const PREV_SINGLE: &str = "1ページ戻る";
     pub(crate) const FIRST: &str = "先頭へ";
     pub(crate) const LAST: &str = "末尾へ";
+    pub(crate) const NEXT_FILE: &str = "次のファイル";
+    pub(crate) const PREV_FILE: &str = "前のファイル";
 }
 
 /// Navigation items in menu order.
-pub(crate) const NAVIGATION_ITEMS: [(&str, Action); 6] = [
+pub(crate) const NAVIGATION_ITEMS: [(&str, Action); 8] = [
     (labels::NEXT, Action::Next),
     (labels::PREV, Action::Prev),
     (labels::NEXT_SINGLE, Action::NextSingle),
     (labels::PREV_SINGLE, Action::PrevSingle),
     (labels::FIRST, Action::First),
     (labels::LAST, Action::Last),
+    (labels::NEXT_FILE, Action::NextFile),
+    (labels::PREV_FILE, Action::PrevFile),
 ];
 
 /// A command selected from the native menu.
@@ -69,7 +73,7 @@ impl MenuCommand {
 
     pub(crate) fn from_id(id: u16) -> Option<Self> {
         let command = match id {
-            1..=13 => MenuCommand::Action(Action::ALL[(id - 1) as usize]),
+            1..=15 => MenuCommand::Action(Action::ALL[(id - 1) as usize]),
             20..=26 => MenuCommand::SetScaleFilter(ScaleFilter::ALL[(id - 20) as usize]),
             40 => MenuCommand::ClearDiskCache,
             41 => MenuCommand::ExitApplication,
@@ -110,6 +114,8 @@ mod tests {
             MenuCommand::Action(Action::Next),
             MenuCommand::Action(Action::SavePage),
             MenuCommand::Action(Action::ToggleFullscreen),
+            MenuCommand::Action(Action::NextFile),
+            MenuCommand::Action(Action::PrevFile),
             MenuCommand::SetScaleFilter(ScaleFilter::Nearest),
             MenuCommand::SetScaleFilter(ScaleFilter::Lanczos3),
             MenuCommand::ClearDiskCache,
@@ -125,12 +131,14 @@ mod tests {
     fn ids_match_the_os_menu_ids() {
         assert_eq!(MenuCommand::Action(Action::Next).id(), 1);
         assert_eq!(MenuCommand::Action(Action::Quit).id(), 13);
+        assert_eq!(MenuCommand::Action(Action::NextFile).id(), 14);
+        assert_eq!(MenuCommand::Action(Action::PrevFile).id(), 15);
         assert_eq!(MenuCommand::SetScaleFilter(ScaleFilter::Nearest).id(), 20);
         assert_eq!(MenuCommand::SetScaleFilter(ScaleFilter::Lanczos3).id(), 26);
         assert_eq!(MenuCommand::ClearDiskCache.id(), 40);
         assert_eq!(MenuCommand::ExitApplication.id(), 41);
         assert_eq!(MenuCommand::ToggleAllowUpscale.id(), 42);
-        assert_eq!(MenuCommand::from_id(14), None);
+        assert_eq!(MenuCommand::from_id(16), None);
         assert_eq!(MenuCommand::from_id(19), None);
         assert_eq!(MenuCommand::from_id(43), None);
     }
@@ -174,6 +182,8 @@ mod tests {
             labels::PREV_SINGLE,
             labels::FIRST,
             labels::LAST,
+            labels::NEXT_FILE,
+            labels::PREV_FILE,
         ] {
             assert!(!label.is_empty());
         }
@@ -190,6 +200,8 @@ mod tests {
                 (labels::PREV_SINGLE, Action::PrevSingle),
                 (labels::FIRST, Action::First),
                 (labels::LAST, Action::Last),
+                (labels::NEXT_FILE, Action::NextFile),
+                (labels::PREV_FILE, Action::PrevFile),
             ]
         );
     }
