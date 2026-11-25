@@ -88,6 +88,33 @@ fn saves_a_page_from_an_image_directory() {
 }
 
 #[test]
+fn rejects_export_to_the_original_image_or_a_hard_link() {
+    let root = common::temp_dir();
+    let image = common::png();
+    let source = root.join("001.png");
+    std::fs::write(&source, &image).unwrap();
+    let out_dir = root.join("out");
+    std::fs::create_dir(&out_dir).unwrap();
+    let alias = out_dir.join("001.png");
+    std::fs::hard_link(&source, &alias).unwrap();
+    let cache = DiskCache::new(root.join("cache"));
+
+    for directory in [&root, &out_dir] {
+        let config = Config {
+            export_dir: Some(directory.clone()),
+            export_name: "{name}".to_string(),
+            ..Config::default()
+        };
+        let error = export::save_current_page(&root, 0, &config, &cache).unwrap_err();
+        assert!(error.contains("the same file"), "{error}");
+        assert_eq!(std::fs::read(&source).unwrap(), image);
+        assert_eq!(std::fs::read(&alias).unwrap(), image);
+    }
+
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
 fn saves_sorted_page_with_matching_name_and_bytes() {
     let archive_path = common::temp_zip(&[
         ("10.jpg", b"ten"),
@@ -102,6 +129,8 @@ fn saves_sorted_page_with_matching_name_and_bytes() {
     };
 
     let cache = common::cache_for(&archive_path);
+    std::fs::create_dir(&out_dir).unwrap();
+    std::fs::write(out_dir.join("1_2.png"), b"old output").unwrap();
     let output = export::save_current_page(&archive_path, 0, &config, &cache).unwrap();
     assert_eq!(output, out_dir.join("1_2.png"));
     assert_eq!(std::fs::read(output).unwrap(), b"two");

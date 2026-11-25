@@ -1,8 +1,9 @@
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
+
+use crate::storage::atomic_write::atomic_write;
 
 pub const DEFAULT_EXPORT_NAME: &str = "{book}_{page:03}";
 pub const DEFAULT_PREFETCH: usize = 2;
@@ -164,7 +165,12 @@ impl Config {
 
     pub fn save_to(&self, path: &Path) -> io::Result<()> {
         validate_existing::<Config>(path)?;
-        atomic_write(path, self.to_toml().as_bytes())
+        atomic_write(path, |file| {
+            if let Ok(metadata) = std::fs::metadata(path) {
+                file.set_permissions(metadata.permissions())?;
+            }
+            file.write_all(self.to_toml().as_bytes())
+        })
     }
 
     pub fn parse(text: &str) -> Self {
@@ -252,41 +258,6 @@ fn validate_existing<T: for<'de> Deserialize<'de>>(path: &Path) -> io::Result<()
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error),
     }
-}
-
-fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
-    static NEXT_ID: AtomicU64 = AtomicU64::new(0);
-    let parent = path
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
-    std::fs::create_dir_all(parent)?;
-    let (temp, mut file) = loop {
-        let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-        let temp = parent.join(format!(".mangania-{}-{id}.tmp", std::process::id()));
-        match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temp)
-        {
-            Ok(file) => break (temp, file),
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error),
-        }
-    };
-    let result = (|| {
-        if let Ok(metadata) = std::fs::metadata(path) {
-            file.set_permissions(metadata.permissions())?;
-        }
-        file.write_all(contents)?;
-        file.sync_all()?;
-        drop(file);
-        std::fs::rename(&temp, path)
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(temp);
-    }
-    result
 }
 
 fn expand_tilde(path: &Path) -> PathBuf {

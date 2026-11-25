@@ -1,7 +1,11 @@
+use std::io;
 use std::path::{Path, PathBuf};
+
+use same_file::Handle;
 
 use crate::archive::open::Entry;
 use crate::config::{Config, DEFAULT_EXPORT_NAME};
+use crate::storage::atomic_write::atomic_write;
 use crate::storage::disk_cache::DiskCache;
 
 pub fn save_current_page(
@@ -40,20 +44,32 @@ pub fn save_current_page(
     };
     let stem = sanitize_filename(&expand_name(template, &book, page + 1, name));
 
-    let directory = config.resolved_export_dir();
-    std::fs::create_dir_all(&directory)
-        .map_err(|error| format!("create {}: {error}", directory.display()))?;
-    let output = directory.join(format!("{stem}.{extension}"));
+    let output = config
+        .resolved_export_dir()
+        .join(format!("{stem}.{extension}"));
     let source = cache.page_path(&mut entry.archive, &page_info)?.path;
-    if let Err(error) = std::fs::copy(&source, &output) {
-        let _ = std::fs::remove_file(&output);
-        return Err(format!(
-            "copy {} to {}: {error}",
-            source.display(),
-            output.display()
-        ));
-    }
+    copy_page(&source, &output)
+        .map_err(|error| format!("copy {} to {}: {error}", source.display(), output.display()))?;
     Ok(output)
+}
+
+fn copy_page(source: &Path, output: &Path) -> io::Result<()> {
+    let mut source = Handle::from_path(source)?;
+    match Handle::from_path(output) {
+        Ok(existing) if existing == source => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "source and destination are the same file",
+            ));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    atomic_write(output, |file| {
+        io::copy(source.as_file_mut(), file)?;
+        Ok(())
+    })
 }
 
 pub fn expand_name(template: &str, book: &str, page: usize, name: &str) -> String {
