@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use image::RgbaImage;
@@ -15,7 +15,6 @@ pub struct PageCache {
     max_bytes: usize,
     used_bytes: usize,
     entries: HashMap<usize, Arc<RgbaImage>>,
-    order: VecDeque<usize>,
 }
 
 impl PageCache {
@@ -25,7 +24,6 @@ impl PageCache {
             max_bytes,
             used_bytes: 0,
             entries: HashMap::new(),
-            order: VecDeque::new(),
         }
     }
 
@@ -57,20 +55,15 @@ impl PageCache {
 
         if let Some(old) = self.entries.insert(page, image) {
             self.used_bytes = self.used_bytes.saturating_sub(old.as_raw().len());
-            if let Some(index) = self.order.iter().position(|old| *old == page) {
-                self.order.remove(index);
-            }
         }
-        self.order.push_back(page);
         self.used_bytes += bytes;
 
-        while (self.order.len() > self.max_entries || self.used_bytes > self.max_bytes)
+        while (self.entries.len() > self.max_entries || self.used_bytes > self.max_bytes)
             && self.entries.len() > 1
         {
-            let Some((oldest, index)) = self.eviction_candidate(current, step) else {
+            let Some(oldest) = self.eviction_candidate(current, step) else {
                 break;
             };
-            self.order.remove(index);
             if let Some(image) = self.entries.remove(&oldest) {
                 let bytes = image.as_raw().len();
                 self.used_bytes = self.used_bytes.saturating_sub(bytes);
@@ -103,38 +96,21 @@ impl PageCache {
     /// Pages before the previous display have the lowest priority. Pages after
     /// the next display come next, farthest first. The previous, current, and
     /// next display pages are protected and may exceed the soft limits.
-    fn eviction_candidate(&self, current: usize, step: usize) -> Option<(usize, usize)> {
+    fn eviction_candidate(&self, current: usize, step: usize) -> Option<usize> {
         let past_end = current.saturating_sub(step);
         let future_start = current.saturating_add(step.saturating_mul(2));
-        let mut best: Option<(usize, usize, u8, usize)> = None;
-        for (index, page) in self.order.iter().enumerate() {
-            if !self.entries.contains_key(page) {
-                continue;
-            }
-            let (class, distance) = if *page < past_end {
-                (0, past_end - *page)
-            } else if *page >= future_start {
-                (1, *page - future_start)
-            } else {
-                continue;
-            };
-            let replace = match best {
-                None => true,
-                Some((_, best_index, best_class, best_distance)) => {
-                    if class != best_class {
-                        class < best_class
-                    } else if distance != best_distance {
-                        distance > best_distance
-                    } else {
-                        index < best_index
-                    }
-                }
-            };
-            if replace {
-                best = Some((*page, index, class, distance));
-            }
-        }
-        best.map(|(page, index, _, _)| (page, index))
+        self.entries
+            .keys()
+            .copied()
+            .filter(|&page| page < past_end)
+            .min()
+            .or_else(|| {
+                self.entries
+                    .keys()
+                    .copied()
+                    .filter(|&page| page >= future_start)
+                    .max()
+            })
     }
 
     pub fn clear(&mut self) {
@@ -146,7 +122,6 @@ impl PageCache {
             ));
         }
         self.entries.clear();
-        self.order.clear();
         self.used_bytes = 0;
     }
 
