@@ -1,43 +1,63 @@
 //! Choosing the next or previous archive in the same directory.
 
+use std::fs::DirEntry;
 use std::path::{Path, PathBuf};
 
-use super::natural_cmp;
+use super::{is_page_name, natural_cmp};
 
 const ARCHIVE_EXTENSIONS: [&str; 2] = ["zip", "cbz"];
 
-/// Returns the archive `delta` positions away from `path` among the ZIP/CBZ
-/// files in its directory, in natural order.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Archive,
+    Directory,
+}
+
+/// Returns the entry `delta` positions away from `path` among the siblings of
+/// the same kind, in natural order.
 ///
-/// `delta` is 1 for the next file and -1 for the previous one. Directories,
-/// hidden files, and other formats are ignored, and the ends do not wrap.
+/// ZIP/CBZ files form one group and image directories another, so a ZIP never
+/// jumps to a directory or the other way around. `delta` is 1 for the next
+/// entry and -1 for the previous one. Hidden entries, directories without
+/// direct page images, and the ends are ignored or do not wrap.
 pub fn adjacent_archive(path: &Path, delta: isize) -> Option<PathBuf> {
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
     let current = path.file_name()?.to_str()?;
+    let kind = if path.is_dir() {
+        Kind::Directory
+    } else {
+        Kind::Archive
+    };
 
-    let mut archives: Vec<(String, PathBuf)> = std::fs::read_dir(parent)
+    let mut entries: Vec<(String, PathBuf)> = std::fs::read_dir(parent)
         .ok()?
         .filter_map(Result::ok)
-        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
-        .filter_map(|entry| {
-            let name = entry.file_name().into_string().ok()?;
-            is_archive_file(&name).then(|| (name, entry.path()))
-        })
+        .filter_map(|entry| candidate(&entry, kind))
         .collect();
-    archives.sort_by(|(a, _), (b, _)| natural_cmp(a, b));
+    entries.sort_by(|(a, _), (b, _)| natural_cmp(a, b));
 
-    let index = archives.iter().position(|(name, _)| name == current)?;
+    let index = entries.iter().position(|(name, _)| name == current)?;
     let target = index.checked_add_signed(delta)?;
-    archives.get(target).map(|(_, path)| path.clone())
+    entries.get(target).map(|(_, path)| path.clone())
+}
+
+fn candidate(entry: &DirEntry, kind: Kind) -> Option<(String, PathBuf)> {
+    let name = entry.file_name().into_string().ok()?;
+    if name.starts_with('.') || name == "__MACOSX" {
+        return None;
+    }
+    let file_type = entry.file_type().ok()?;
+    let matches = match kind {
+        Kind::Archive => file_type.is_file() && is_archive_file(&name),
+        Kind::Directory => file_type.is_dir() && has_page_image(&entry.path()),
+    };
+    matches.then(|| (name, entry.path()))
 }
 
 fn is_archive_file(name: &str) -> bool {
-    if name.starts_with('.') {
-        return false;
-    }
     Path::new(name)
         .extension()
         .and_then(|extension| extension.to_str())
@@ -46,6 +66,18 @@ fn is_archive_file(name: &str) -> bool {
                 .iter()
                 .any(|candidate| extension.eq_ignore_ascii_case(candidate))
         })
+}
+
+/// True when the directory has a page image directly inside it, so opening it
+/// can show something. Subdirectories are not searched.
+fn has_page_image(directory: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        entry.file_type().is_ok_and(|kind| kind.is_file())
+            && entry.file_name().to_str().is_some_and(is_page_name)
+    })
 }
 
 #[cfg(test)]
@@ -73,6 +105,8 @@ mod tests {
             std::fs::write(dir.join(name), b"").expect("write file");
         }
         std::fs::create_dir(dir.join("folder.zip")).expect("create directory");
+        std::fs::create_dir(dir.join("11")).expect("create directory");
+        std::fs::write(dir.join("11").join("001.png"), b"").expect("write image");
 
         assert_eq!(
             adjacent_archive(&dir.join("1.zip"), 1),
@@ -90,6 +124,31 @@ mod tests {
         );
 
         assert_eq!(adjacent_archive(&dir.join("notes.txt"), 1), None);
+
+        std::fs::remove_dir_all(&dir).expect("remove temp dir");
+    }
+
+    #[test]
+    fn moves_through_image_directories_of_the_same_kind() {
+        let dir = temp_dir();
+        for name in ["book1", "book2", "notes", ".hidden"] {
+            std::fs::create_dir(dir.join(name)).expect("create directory");
+        }
+        std::fs::write(dir.join("book1").join("001.png"), b"").expect("write image");
+        std::fs::write(dir.join("book2").join("001.jpg"), b"").expect("write image");
+        std::fs::write(dir.join("notes").join("readme.txt"), b"").expect("write text");
+        std::fs::write(dir.join(".hidden").join("001.png"), b"").expect("write image");
+        std::fs::write(dir.join("book3.zip"), b"").expect("write archive");
+
+        assert_eq!(
+            adjacent_archive(&dir.join("book1"), 1),
+            Some(dir.join("book2"))
+        );
+        assert_eq!(adjacent_archive(&dir.join("book2"), 1), None);
+        assert_eq!(
+            adjacent_archive(&dir.join("book2"), -1),
+            Some(dir.join("book1"))
+        );
 
         std::fs::remove_dir_all(&dir).expect("remove temp dir");
     }
