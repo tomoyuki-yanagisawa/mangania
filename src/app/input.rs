@@ -150,6 +150,8 @@ impl App {
                 self.set_fullscreen(!fullscreen);
             }
             Action::SavePage => self.save_current_page(),
+            Action::NextFile => self.open_adjacent(1),
+            Action::PrevFile => self.open_adjacent(-1),
             Action::Quit => {
                 if self.is_fullscreen() {
                     self.set_fullscreen(false);

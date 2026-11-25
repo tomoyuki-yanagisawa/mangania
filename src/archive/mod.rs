@@ -1,3 +1,4 @@
+pub mod adjacent;
 pub mod open;
 
 use std::cmp::Ordering;
